@@ -1,5 +1,5 @@
-# Detectors
-Modular objection detection framework, mostly my own learning and practice.
+# Diffusion
+Repository of diffusion models mostly for learning purposes.
 
 ## Table of Contents
 * [Training a Model](#training-a-model)
@@ -9,3 +9,6 @@ Modular objection detection framework, mostly my own learning and practice.
 `python scripts/train.py scripts/configs/base-config.yaml`
 
 ## Resources
+### Denoising Diffusion Probabilistic Model (DDPM)
+* [DDPM Paper](https://arxiv.org/abs/2006.11239)
+* [DDPM PyTorch Implementation](https://github.com/lucidrains/denoising-diffusion-pytorch)
