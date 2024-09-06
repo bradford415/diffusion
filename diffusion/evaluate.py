@@ -31,7 +31,6 @@ def evaluate(
     for steps, (samples, targets) in enumerate(dataloader_test):
         samples = samples.to(device)
 
-
     return None
 
 
@@ -48,7 +47,7 @@ def load_model_state_dict(model: nn.Module, weights_path: str):
         "cuda" if torch.cuda.is_available() else "cpu"
     )  # Select device for inference
 
-    state_dict  = torch.load(weights_path, map_location=device)
+    state_dict = torch.load(weights_path, map_location=device)
     model.load_state_dict(state_dict["model"])
 
     return model
