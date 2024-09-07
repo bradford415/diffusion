@@ -41,24 +41,27 @@ class Unet(Module):
         flash_attn=False,
     ):
         """Initialize UNet model
-        
+
         Args:
             dim:
             dim_mults: Multiplier for dim which sets the number of channels in the unet model
 
-        
+
         """
         super().__init__()
 
         # determine dimensions
 
         self.channels = channels
-        self.self_condition = self_condition ######## START HERE #########
+        self.self_condition = self_condition
         input_channels = channels * (2 if self_condition else 1)
 
         init_dim = dim
-        self.init_conv = nn.Conv2d(input_channels, init_dim, 7, padding=3)
 
+        # Initial 7x7 conv in ResNet
+        self.init_conv = nn.Conv2d(input_channels, init_dim, kernel_size=7, padding=3)
+
+        # Create the channels
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
 

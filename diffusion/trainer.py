@@ -13,8 +13,6 @@ from torch.utils import data
 from torchvision.transforms import functional as F
 from tqdm import tqdm
 
-from diffusion.utils import misc
-
 log = logging.getLogger(__name__)
 
 

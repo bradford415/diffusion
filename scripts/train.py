@@ -2,7 +2,7 @@ import datetime
 import logging
 import tracemalloc
 from pathlib import Path
-from typing import Any, Dict, Iterable, Tuple
+from typing import Any, Dict, Iterable, Tuple, Optional
 
 import torch
 import yaml
@@ -11,11 +11,11 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from diffusion.trainer import Trainer
-from diffusion.utils import reproduce, schedulers
+from diffusion.utils import reproduce
+from diffusion.models import Unet
+from diffusion.data.cifar import build_cifar
 
-detectors_map: Dict[str, Any] = {}
-
-dataset_map: Dict[str, Any] = {}
+model_map: Dict[str, Any] = {"unet": Unet}
 
 optimizer_map = {
     "adam": torch.optim.Adam,
@@ -36,20 +36,23 @@ scheduler_map = {
 log = logging.getLogger(__name__)
 
 
-def main(base_config_path: str, model_config_path):
+def main(base_config_path: str, model_config_path: Optional[str] = None):
     """Entrypoint for the project
 
     Args:
         base_config_path: path to the desired configuration file
-        model_config_path: path to the detection model configuration file
+        model_config_path: TODO: path to the detection model configuration file
 
     """
     # Load configuration files
     with open(base_config_path, "r") as f:
         base_config = yaml.safe_load(f)
 
-    with open(model_config_path, "r") as f:
-        model_config = yaml.safe_load(f)
+    if model_config_path is not None:
+        with open(model_config_path, "r") as f:
+            model_config = yaml.safe_load(f)
+    else:
+        model_config = base_config["model"]
 
     # Initialize paths
     output_path = (
@@ -99,55 +102,43 @@ def main(base_config_path: str, model_config_path):
     else:
         log.info("Using CPU")
 
-    dataset_kwargs = {"root": base_config["dataset"]["root"]}
-    dataset_train = dataset_map[base_config["dataset_name"]](
-        dataset_split="train", debug_mode=base_config["debug_mode"], **dataset_kwargs
-    )
-    dataset_val = dataset_map[base_config["dataset_name"]](
-        dataset_split="val", debug_mode=base_config["debug_mode"], **dataset_kwargs
-    )
+    # Create train and val dataset; cifar does not have a val set so we can use test for this
+    common_dataset_kwargs = {"debug_mode": base_config["debug_mode"]}
+    dataset_name = base_config["dataset"]["name"]
+    if dataset_name == "cifar10":
+        dataset_train = build_cifar("cifar10", "train", **common_dataset_kwargs)
+        dataset_val = build_cifar("cifar10", "test", **common_dataset_kwargs)
+    elif dataset_name == "cifar100":
+        dataset_train = build_cifar("cifar10", "train", **common_dataset_kwargs)
+        dataset_val = build_cifar("cifar10", "val", **common_dataset_kwargs)
+    else:
+        ValueError(f"Dataset {dataset_name} not recognized.")
 
-    # drop_last is true becuase the loss function intializes masks with the first dimension being the batch_size;
-    # during the last batch, the batch_size will be different if the length of the dataset is not divisible by the batch_size
     dataloader_train = DataLoader(
         dataset_train,
-        collate_fn=collate_fn,
         drop_last=True,
         **train_kwargs,
     )
     dataloader_val = DataLoader(
         dataset_val,
-        collate_fn=collate_fn,
         drop_last=True,
         **val_kwargs,
     )
 
-    # Initalize model components
-    backbone = backbone_map[model_config["backbone"]["name"]](
-        pretrain=model_config["backbone"]["pretrained"],
-        remove_top=model_config["backbone"]["remove_top"],
-    )
-
-    model_components = {
-        "backbone": backbone,
-        "num_classes": 80,
-        **model_config["priors"],
-    }
-
     # Initialize detection model and transfer to GPU
-    model = detectors_map[model_config["detector"]](**model_components)
+    model = model_map[model_config["model"]]()
     # model = Darknet("scripts/configs/yolov4.cfg")
     # model = Yolov4_pytorch(n_classes=80,inference=False)
     model.to(device)
 
     ## TODO: Apply weights init
 
-    # For the YoloV4Loss function, if the batch size is different than the
-    criterion = YoloV4Loss(
-        anchors=model_config["priors"]["anchors"],
-        batch_size=base_config["train"]["batch_size"],
-        device=device,
-    )
+    # Loss function
+    # criterion = YoloV4Loss(
+    #     anchors=model_config["priors"]["anchors"],
+    #     batch_size=base_config["train"]["batch_size"],
+    #     device=device,
+    # )
 
     # criterion = Yolo_loss(device=device, batch=base_config["train"]["batch_size"], n_classes=80)
 
@@ -159,7 +150,7 @@ def main(base_config_path: str, model_config_path):
     learning_params = base_config[learning_config]
 
     # Initialize training objects
-    optimizer, lr_scheduler = _init_training_objects(
+    optimizer  = _init_training_objects(
         model_params=model.parameters(),
         optimizer=learning_params["optimizer"],
         scheduler=learning_params["lr_scheduler"],
@@ -183,12 +174,10 @@ def main(base_config_path: str, model_config_path):
     # Build trainer args used for the training
     trainer_args = {
         "model": model,
-        "criterion": criterion,
+        #"criterion": criterion,
         "dataloader_train": dataloader_train,
         "dataloader_val": dataloader_val,
-        "optimizer": optimizer,
-        "scheduler": lr_scheduler,
-        "class_names": dataset_train.class_names,
+        #"optimizer": optimizer,
         **train_args["epochs"],
     }
     trainer.train(**trainer_args)
@@ -205,10 +194,8 @@ def _init_training_objects(
     optimizer = optimizer_map[optimizer](
         model_params, lr=learning_rate, weight_decay=weight_decay
     )
-    lr_scheduler = scheduler_map[scheduler](
-        optimizer, schedulers.burnin_schedule_modified
-    )
-    return optimizer, lr_scheduler
+
+    return optimizer
 
 
 if __name__ == "__main__":

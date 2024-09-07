@@ -1,0 +1,79 @@
+# Base config file which stores the default parameters which apply to all model configurations
+---
+
+# Mode to use for debugging/development; this only uses a few samples in in the train/val dataset
+# to quickly run the code
+debug_mode: False
+
+# Base directory for output files; do not change this 
+output_path: "output/train"
+
+# Experiment name; this will be used for the output directory; use "development" when developing
+exp_name: "development"
+
+# Parameters for the dataset class
+dataset:
+  # Name of dataset; must be one of the names in the dataset_map dict
+  name: "cifar10"
+
+  # Path to the root of the dataset; parameter not used for cifar dataset
+  root: "/mnt/c/Users/bsele/Documents/datasets/coco_minitrain_25k"
+
+  # Number of CPU processes the next sample in the dataset; use 0 to only use the main process
+  num_workers: 4
+
+# Model to be trained during diffusion; later I should make this its own config file
+model: unet
+
+train:
+
+  # Configurations for learning parameters such as the optmizier and lr scheduler
+  learning_config: "learning_config_1"
+
+  batch_size: 4
+
+  # Various epochs used during training
+  epochs:
+
+    # The epoch to start on; starting at 1 makes calculations for logging and checkpointing more intuitive
+    start_epoch: 1
+    epochs: 200
+
+    # Number of epochs to checkpoint after; use 'null' to turn off checkpointing
+    ckpt_epochs: 10
+
+validation:
+  batch_size: 4
+
+# GPU parameters
+cuda:
+
+  # List of GPU devices to use
+  gpus: [0]
+
+# Logging parameters
+logging:
+
+  # Log the train progress every n steps
+  train_steps_freq: 20
+
+# Reproducibility information
+reproducibility:
+  seed: 42
+
+
+# Params for training objects
+
+
+# Adam optimizer parameters defined here: https://github.com/eriklindernoren/PyTorch-YOLOv3/blob/master/config/yolov3.cfg
+learning_config_1:
+  optimizer: "adam"
+
+  learning_rate: 0.0001 #1e-4
+
+  # L2 regulartization penalty to add to the loss function: 
+  weight_decay: 0.0005
+
+  lr_scheduler: "lambda_lr"
+
+
