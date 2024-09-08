@@ -16,19 +16,33 @@ dataset_name: ""
 
 # Parameters for the dataset class
 dataset:
+  # Name of dataset
+  name: "cifar10"
 
   # Path to the root of the dataset
-  root: "/mnt/c/Users/bsele/Documents/Datasets/coco_minitrain_25k"
+  root: "/mnt/c/Users/bsele/Documents/Datasets/cifar10"
 
   # Number of CPU processes the next sample in the dataset; use 0 to only use the main process
   num_workers: 4
+
+# Model to be trained during diffusion; later I should make this its own config file
+model_name: unet
+
+# params for the model
+model_params:
+
+  # Params for UNet model; see diffusion.models.unet for param descriptions
+  unet:
+    dim: 64
+    dim_mults: [1, 2, 4, 8]
+    #flash_attn: True
 
 train:
 
   # Configurations for learning parameters such as the optmizier and lr scheduler
   learning_config: "learning_config_1"
 
-  batch_size: 16
+  batch_size: 4
 
   # Various epochs used during training
   epochs:
@@ -62,7 +76,6 @@ reproducibility:
 
 # Params for training objects
 
-
 # Adam optimizer parameters defined here: https://github.com/eriklindernoren/PyTorch-YOLOv3/blob/master/config/yolov3.cfg
 learning_config_1:
   optimizer: "adam"
@@ -73,5 +86,3 @@ learning_config_1:
   weight_decay: 0.0005
 
   lr_scheduler: "lambda_lr"
-
-

@@ -52,7 +52,8 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         with open(model_config_path, "r") as f:
             model_config = yaml.safe_load(f)
     else:
-        model_config = base_config["model"]
+        model_name = base_config["model_name"]
+        model_config = base_config["model_params"][model_name]
 
     # Initialize paths
     output_path = (
@@ -103,7 +104,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         log.info("Using CPU")
 
     # Create train and val dataset; cifar does not have a val set so we can use test for this
-    common_dataset_kwargs = {"debug_mode": base_config["debug_mode"]}
+    common_dataset_kwargs = {"root": base_config["dataset"]["root"], "debug_mode": base_config["debug_mode"]}
     dataset_name = base_config["dataset"]["name"]
     if dataset_name == "cifar10":
         dataset_train = build_cifar("cifar10", "train", **common_dataset_kwargs)
@@ -125,13 +126,11 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         **val_kwargs,
     )
 
-    # Initialize detection model and transfer to GPU
-    model = model_map[model_config["model"]]()
-    # model = Darknet("scripts/configs/yolov4.cfg")
-    # model = Yolov4_pytorch(n_classes=80,inference=False)
+    # Initialize model
+    model = model_map[model_name](**model_config)
     model.to(device)
 
-    ## TODO: Apply weights init
+    ## TODO: Apply weights initialization
 
     # Loss function
     # criterion = YoloV4Loss(
@@ -139,8 +138,6 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     #     batch_size=base_config["train"]["batch_size"],
     #     device=device,
     # )
-
-    # criterion = Yolo_loss(device=device, batch=base_config["train"]["batch_size"], n_classes=80)
 
     # Extract the train arguments from base config
     train_args = base_config["train"]

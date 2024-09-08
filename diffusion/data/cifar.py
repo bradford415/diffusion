@@ -33,19 +33,19 @@ def make_cifar_transforms(dataset_split):
 
 
 def build_cifar(
-    dataset_name: "str",
+    dataset_name: str,
     dataset_split: str,
-    debug_mode: bool = False,) -> Union[CIFAR10, CIFAR100]:
+    root: str = "../",
+    debug_mode: bool = False) -> Union[CIFAR10, CIFAR100]:
     """Initialize the cifar 10 or 100 dataset
-
+    
         Args:
-            root: full path to the dataset root
             split: which dataset split to use; `train` or `val`
+            root: full path to the dataset root; for the cifar dataset this is the location the
+                  dataset will be downloaded initially
             debug_mode: Whether to build the dataset in debug mode; if true, this only uses a few samples
                         to quickly run the code
     """
-
-    root = "./"
     dataset_root = Path(root)
 
     # Create the data augmentation transforms
@@ -53,7 +53,8 @@ def build_cifar(
 
     dataset_args = {"root": dataset_root,
                     "train": dataset_split == "train",
-                    "transforms": data_transforms}
+                    "download": True,
+                    "transform": data_transforms}
     if dataset_name == "cifar10":
         dataset = CIFAR10(**dataset_args)
     elif dataset_name == CIFAR100:

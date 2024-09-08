@@ -30,9 +30,6 @@ class Unet(Module):
         channels=3,
         self_condition=False,
         learned_variance=False,
-        learned_sinusoidal_cond=False,
-        random_fourier_features=False,
-        learned_sinusoidal_dim=16,
         sinusoidal_pos_emb_theta=10000,
         dropout=0.0,
         attn_dim_head=32,
@@ -61,26 +58,18 @@ class Unet(Module):
         # Initial 7x7 conv in ResNet
         self.init_conv = nn.Conv2d(input_channels, init_dim, kernel_size=7, padding=3)
 
-        # Create the channels
+        # Create the channels of the model
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
+        
+        # Pair the downsampled channels with the upsampled channels [(down[0], up[1]) ...]
         in_out = list(zip(dims[:-1], dims[1:]))
 
-        # time embeddings
-
+        # Dimension of the noise time embeddings
         time_dim = dim * 4
 
-        self.random_or_learned_sinusoidal_cond = (
-            learned_sinusoidal_cond or random_fourier_features
-        )
-
-        if self.random_or_learned_sinusoidal_cond:
-            sinu_pos_emb = RandomOrLearnedSinusoidalPosEmb(
-                learned_sinusoidal_dim, random_fourier_features
-            )
-            fourier_dim = learned_sinusoidal_dim + 1
-        else:
-            sinu_pos_emb = SinusoidalPosEmb(dim, theta=sinusoidal_pos_emb_theta)
-            fourier_dim = dim
+        # START HERE
+        sinu_pos_emb = SinusoidalPosEmb(dim, theta=sinusoidal_pos_emb_theta)
+        fourier_dim = dim
 
         self.time_mlp = nn.Sequential(
             sinu_pos_emb,

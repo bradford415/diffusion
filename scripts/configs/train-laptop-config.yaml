@@ -13,7 +13,7 @@ exp_name: "development"
 
 # Parameters for the dataset class
 dataset:
-  # Name of dataset; must be one of the names in the dataset_map dict
+  # Name of dataset
   name: "cifar10"
 
   # Path to the root of the dataset; parameter not used for cifar dataset
