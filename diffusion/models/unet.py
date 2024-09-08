@@ -16,6 +16,8 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms as T
 from torchvision import utils
 
+from diffusion.models.positional import SinusoidalPosEmb
+
 
 class Unet(Module):
     """Unet model to be trained for diffusion during the reverse process
