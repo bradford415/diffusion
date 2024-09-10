@@ -36,7 +36,7 @@ class Unet(Module):
         dropout=0.0,
         attn_dim_head=32,
         attn_heads=4,
-        full_attn=None,  # defaults to full attention only for inner most layer
+        full_attn=False,  # defaults to full attention only for inner most layer
         flash_attn=False,
     ):
         """Initialize UNet model
@@ -44,6 +44,8 @@ class Unet(Module):
         Args:
             dim:
             dim_mults: Multiplier for dim which sets the number of channels in the unet model
+            attn_heads: Number of heads in mult-head attntion
+            all_attn: Whether to apply attention to all unet levels; if False only use attention on the last level;
 
 
         """
@@ -69,31 +71,34 @@ class Unet(Module):
         # Dimension of the noise time embeddings
         time_dim = dim * 4
 
-        # START HERE
+        # Initialize postional embeddings for the noise timesteps
         sinu_pos_emb = SinusoidalPosEmb(dim, theta=sinusoidal_pos_emb_theta)
         fourier_dim = dim
 
+        # Positional embedding module
         self.time_mlp = nn.Sequential(
             sinu_pos_emb,
             nn.Linear(fourier_dim, time_dim),
             nn.GELU(),
             nn.Linear(time_dim, time_dim),
         )
-
-        # attention
-
-        if not full_attn:
-            full_attn = (*((False,) * (len(dim_mults) - 1)), True)
-
+        
         num_stages = len(dim_mults)
-        full_attn = cast_tuple(full_attn, num_stages)
-        attn_heads = cast_tuple(attn_heads, num_stages)
-        attn_dim_head = cast_tuple(attn_dim_head, num_stages)
+        
+        # Apply attention to all layers if True or only last layer if False
+        if full_attn:
+            attn_layers = (True,) * num_stages
+        else:
+            attn_layers = ((False,) * num_stages - 1, True)
 
-        assert len(full_attn) == len(dim_mults)
+        attn_heads = (attn_heads,) * num_stages
+        attn_dim_head = (attn_dim_head,) * num_stages
+
+        assert len(attn_layers) == len(dim_mults)
 
         # prepare blocks
 
+        ######### START HERE, REMOVE PARTIAL AND UNDERSTAND RESNET
         FullAttention = partial(Attention, flash=flash_attn)
         resnet_block = partial(ResnetBlock, time_emb_dim=time_dim, dropout=dropout)
 
@@ -105,13 +110,15 @@ class Unet(Module):
 
         for ind, (
             (dim_in, dim_out),
-            layer_full_attn,
+            layer_attn,
             layer_attn_heads,
             layer_attn_dim_head,
         ) in enumerate(zip(in_out, full_attn, attn_heads, attn_dim_head)):
             is_last = ind >= (num_resolutions - 1)
 
-            attn_klass = FullAttention if layer_full_attn else LinearAttention
+            attn_klass = FullAttention if layer_attn else None
+
+            attention
 
             self.downs.append(
                 ModuleList(
