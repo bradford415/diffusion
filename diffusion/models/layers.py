@@ -41,32 +41,45 @@ class SelfAttention(nn.Module):
 class MultiheadAttention(nn.Module):
     """TODO"""
     
-    def __init__(self, input_dim, embed_dim, num_heads):
+    def __init__(self, embed_dim, num_heads):
         """TODO
         
         Args:
             embed_dim: Total dimension of the model; embed_dim will be split across
-                       num_heads (attention_dim // num_heads) 
+                       num_heads (attention_dim // num_heads)  after it's projected
             num_heads: Number of attention heads; each head will have dimension of attention_dim // num_heads 
         """
-        
         assert embed_dim % num_heads == 0, "The number of heads should be divisble by the attenion_dim"
+
+        self.num_heads = num_heads
+
         head_dim = embed_dim // num_heads
         
-        self.to_qkv = nn.Linear(input_dim, head_dim*3, bias=False)
+        self.q_proj = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.k_proj = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=False)
         
-        self.heads = nn.ModuleList(
-            [Attention(head_dim, head_size, block_size) for _ in range(num_heads)]
-        )
+        # self.heads = nn.ModuleList(
+        #     [Attention(head_dim, head_size, block_size) for _ in range(num_heads)]
+        # )
         
-        self.projection = nn.Linear(input_dim, input_dim)
+    def forward(self, queries: torch.Tensor, keys: torch.Tensor, values: torch.Tensor):
+        """"Forward pass through Multiheaded Attention; 
+        for self-attention the queries, keys, and values should be the same
         
-    def forward(self, input):
+        Args:
+            queries: Input tensor to compute the attention of
+            keys: Input tensor to compute the attention of
+            values: Input tensor to compute the context of; for self-attention this should be the same
+                    as q & v
+        """
+        ## TODO START HERE
+        query = self.q_proj(q) # (batch, seq_len, d_model) --> (batch, seq_len, d_model)
+        key = self.w_k(k) # (batch, seq_len, d_model) --> (batch, seq_len, d_model)
+        value = self.w_v(v) # (batch, seq_len, d_model) --> (batch, seq_len, d_model)
+
         
         q, k, v = self.to_qkv(input).chunk(3)
-        
-        
-    
         
         
 class Attention(nn.Module):
@@ -80,8 +93,6 @@ class Attention(nn.Module):
         """
         super().__init__()
         
-        ############# START HERE USE QKV PROJECTIONS LIKE IN NANOGPT; also need to see if lucid rains uses multi head or just attention
-        
         # Used to scale the qk dot product
         self.sqrt_dim = torch.sqrt(attention_dim)
         
@@ -89,7 +100,7 @@ class Attention(nn.Module):
         """T
         
         Args:
-            input: TODO
+            input: The input
             mask: Tensor containing indices to be masked
             
         Returns:
