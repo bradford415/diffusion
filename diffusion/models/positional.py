@@ -7,12 +7,12 @@ from torch import nn
 class SinusoidalPosEmb(nn.Module):
     """Create sinusoidal position embeddings to for a noise timestep"""
 
-    def __init__(self, dim, theta = 10000):
+    def __init__(self, dim, theta=10000):
         """Initialize the positional embedding module
-        
+
         Args:
             dim: Dimension of the position embedding
-            theta: 
+            theta:
         """
         super().__init__()
         self.dim = dim
@@ -20,7 +20,7 @@ class SinusoidalPosEmb(nn.Module):
 
     def forward(self, timestep):
         """Calculates the positional embedding for a specific position
-        
+
         Implements the formula from "Attention is all you need"; however, the standard
         equation is not very efficient to compute due to the nested loops. We can use
         logarithmic properties to make this more efficient to compute in pytorch
@@ -43,6 +43,6 @@ class SinusoidalPosEmb(nn.Module):
 
         # Calculate the position embeddings; this works since the propety above moves the denominator
         # to the numerator (-emb) so we can multiply by the timestep
-        emb = timestep[:, None] * emb[None, :] # (1, dim/2)
-        emb = torch.cat((emb.sin(), emb.cos()), dim=-1) # (1, dim)
+        emb = timestep[:, None] * emb[None, :]  # (1, dim/2)
+        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)  # (1, dim)
         return emb

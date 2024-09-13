@@ -60,7 +60,7 @@ class Unet(Module):
 
         # Create the channels of the model
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
-        
+
         # Pair the downsampled channels with the upsampled channels [(down[0], up[1]) ...]
         in_out_ch = list(zip(dims[:-1], dims[1:]))
 
@@ -78,12 +78,11 @@ class Unet(Module):
             nn.GELU(),
             nn.Linear(time_dim, time_dim),
         )
-        
+
         num_stages = len(dim_mults)
-        
+
         attn_heads = (attn_heads,) * num_stages
         attn_dim_head = (attn_dim_head,) * num_stages
-
 
         self.downs = ModuleList([])
         self.ups = ModuleList([])
