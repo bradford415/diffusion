@@ -7,7 +7,7 @@ from torch.nn import function as F
 
 class MultiheadAttention(nn.Module):
     """TODO
-    
+
     Implementation based on: https://github.com/hkproj/pytorch-transformer/blob/3beddd2604bfa5e0fbd53f52361bd887dc027a8c/model.py#L83
     """
 
@@ -18,7 +18,7 @@ class MultiheadAttention(nn.Module):
             embed_dim: Total dimension of the model; embed_dim will be split across
                        num_heads (embed_dim // num_heads)  after it's projected
             num_heads: Number of attention heads; each head will have dimension of attention_dim // num_heads
-        
+
         Returns:
             Linear projected attention values (batch, seq_len, embed_dim)
         """
@@ -87,10 +87,10 @@ class MultiheadAttention(nn.Module):
 
 class Attention(nn.Module):
     """Scaled dot product attention with an optional mask
-    
-    Typically this is used in MHA where q, k, v have already been linearly 
-    projected and split into multiple heads; this can be used for sequences 
-    and feature maps (h, w) but the feature maps features (pixels) should be 
+
+    Typically this is used in MHA where q, k, v have already been linearly
+    projected and split into multiple heads; this can be used for sequences
+    and feature maps (h, w) but the feature maps features (pixels) should be
     flattened
     """
 
@@ -141,7 +141,7 @@ class Attention(nn.Module):
 
 class MHAFeatureMaps(nn.Module):
     """TODO
-    
+
     This implementation is based on: https://github.com/w86763777/pytorch-ddpm/blob/f804ccbd58a758b07f79a3b9ecdfb1beb67258f6/model.py#L78
     but modified to use multiple heads
     """
@@ -152,9 +152,9 @@ class MHAFeatureMaps(nn.Module):
         Args:
             embed_ch: Total channels of the model; embed_ch will be split across
                        num_heads (embed_ch // num_heads) after it's projected
-            num_heads: Number of attention heads; each head will have dimension 
+            num_heads: Number of attention heads; each head will have dimension
                        of embed_ch // num_heads
-        
+
         Returns:
             Linear projected attention values (batch, seq_len, embed_dim)
         """
@@ -169,9 +169,15 @@ class MHAFeatureMaps(nn.Module):
         self.group_norm = nn.GroupNorm(32, embed_ch)
 
         # NOTE: might need to make bias true?
-        self.q_proj = nn.Conv2d(embed_ch, embed_ch, kernel_size=1, stride=1, padding=1, bias=False)
-        self.k_proj = nn.Conv2d(embed_ch, embed_ch, kernel_size=1, stride=1, padding=1, bias=False)
-        self.v_proj = nn.Conv2d(embed_ch, embed_ch, kernel_size=1, stride=1, padding=1, bias=False)
+        self.q_proj = nn.Conv2d(
+            embed_ch, embed_ch, kernel_size=1, stride=1, padding=1, bias=False
+        )
+        self.k_proj = nn.Conv2d(
+            embed_ch, embed_ch, kernel_size=1, stride=1, padding=1, bias=False
+        )
+        self.v_proj = nn.Conv2d(
+            embed_ch, embed_ch, kernel_size=1, stride=1, padding=1, bias=False
+        )
 
         self.attention = Attention()
 
@@ -196,13 +202,13 @@ class MHAFeatureMaps(nn.Module):
         keys = self.k_proj(keys)
         values = self.v_proj(values)
 
-        batch, embed_ch, height, width  = queries.shape
+        batch, embed_ch, height, width = queries.shape
 
         # Flatten spatial features;
         # (batch, height, width, embed_ch) -> (batch, height*width, embed_ch)
-        queries = queries.permute(0, 2, 3, 1).view(batch, height*width, embed_ch)
-        keys = keys.permute(0, 2, 3, 1).view(batch, height*width, embed_ch)
-        values = values.permute(0, 2, 3, 1).view(batch, height*width, embed_ch)
+        queries = queries.permute(0, 2, 3, 1).view(batch, height * width, embed_ch)
+        keys = keys.permute(0, 2, 3, 1).view(batch, height * width, embed_ch)
+        values = values.permute(0, 2, 3, 1).view(batch, height * width, embed_ch)
 
         # Split into multiple heads (batch, num_heads, features, head_dim)
         query_heads = queries.view(
@@ -234,3 +240,59 @@ class MHAFeatureMaps(nn.Module):
         attention_proj = self.final_proj(attention)
 
         return attention_proj
+    
+
+class ResBlock(nn.Module):
+    """TODO
+    
+    Implementation based on: https://github.com/w86763777/pytorch-ddpm/blob/f804ccbd58a758b07f79a3b9ecdfb1beb67258f6/model.py#L116
+    """
+
+    def __init__(self, in_ch, out_ch, time_emb_dim=None, dropout = 0.0):
+        """TODO"""
+        super().__init__()
+
+        if time_emb_dim is not None:
+            self.time_proj = nn.Sequential(
+                nn.SiLU(),
+                nn.Linear(time_emb_dim, out_ch * 2)#nn.Linear(time_emb_dim, out_ch)
+            )
+
+        # NOTE: It looks like the original implementation reverses the order i.e., conv2d last: https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L45
+        #       but many implementations are written differently and more often Conv2d seems to be first
+        self.block1 = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, kernel_Size=3, stride=1, padding=1),
+            nn.SiLU(),
+            nn.GroupNorm(32, in_ch),
+            nn.Dropout(dropout)
+
+        )
+        self.block2 = nn.Sequential(
+            nn.Conv2d(out_ch, out_ch, kernel_Size=3, stride=1, padding=1),
+            nn.SiLU(),
+            nn.GroupNorm(32, out_ch),
+            nn.Dropout(dropout)
+
+        )
+
+        if in_ch != out_ch:
+            # last layer of the unet "level"
+            self.shortcut = nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=1, padding=0)
+        else:
+            self.shortcut = nn.Identity()
+
+    def forward(self, x, time_emb):
+        """TODO"""
+        
+        x = self.block1(x)
+
+        # Add projected time embeddings to the feature maps ;
+        # (b, out_ch, h, w) + (b, out_ch, 1, 1)
+        # this broadcasts the value of the time_emb accross the feature map h & w 
+        x += self.time_proj(time_emb)[:, :, None, None]
+
+        x = self.block2(x)
+
+
+
+

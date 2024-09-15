@@ -17,13 +17,22 @@ dataset:
   name: "cifar10"
 
   # Path to the root of the dataset; parameter not used for cifar dataset
-  root: "/mnt/c/Users/bsele/Documents/datasets/coco_minitrain_25k"
+  root: "/mnt/c/Users/bsele/Documents/datasets/cifar10"
 
   # Number of CPU processes the next sample in the dataset; use 0 to only use the main process
   num_workers: 4
 
 # Model to be trained during diffusion; later I should make this its own config file
-model: unet
+model_name: unet
+
+# params for the model
+model_params:
+
+  # Params for UNet model; see diffusion.models.unet for param descriptions
+  unet:
+    dim: 64
+    dim_mults: [1, 2, 4, 8]
+    #flash_attn: True
 
 train:
 

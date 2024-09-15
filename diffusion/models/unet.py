@@ -8,21 +8,20 @@ from random import random
 
 import torch
 import torch.nn.functional as F
-from torch import einsum, nn
-from torch.amp import autocast
+from torch import nn
 from torch.nn import Module, ModuleList
-from torch.optim import Adam
-from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms as T
-from torchvision import utils
 
 from diffusion.models.positional import SinusoidalPosEmb
+from diffusion.models.layers import MHAFeatureMaps
 
 
 class Unet(Module):
     """Unet model to be trained for diffusion during the reverse process
 
     This is the only training that is performed in diffusion.
+
+    In depth UNet architecture diagram: https://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
     """
 
     def __init__(
@@ -58,7 +57,7 @@ class Unet(Module):
         # Initial 7x7 conv in ResNet
         self.init_conv = nn.Conv2d(input_channels, init_dim, kernel_size=7, padding=3)
 
-        # Create the channels of the model
+        # Create the channels of the model (5,)
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
 
         # Pair the downsampled channels with the upsampled channels [(down[0], up[1]) ...]
@@ -84,10 +83,12 @@ class Unet(Module):
         attn_heads = (attn_heads,) * num_stages
         attn_dim_head = (attn_dim_head,) * num_stages
 
+        # Create Unet layers
         self.downs = ModuleList([])
         self.ups = ModuleList([])
         num_resolutions = len(in_out_ch)
 
+        # Initialize the decoder layers of unet (downsampling)
         for ind, (
             (dim_in, dim_out),
             layer_attn_heads,
