@@ -117,7 +117,7 @@ class Unet(Module):
                 )
             
             # Downsample by a factor of 2 if not the last unet level
-            #############    START HERE IMPLEMENT UNET #############
+            #############    START HERE IMPLEMENT DOWNSAMPLING #############
             if unet_layer != (unet_layer - 1): 
                 level_layers.append(Downsample(dim_in, dim_out))
                                         
