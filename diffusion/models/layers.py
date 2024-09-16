@@ -38,9 +38,6 @@ class MultiheadAttention(nn.Module):
 
         self.linear_proj = nn.linear(embed_dim, embed_dim, bias=False)
 
-        # self.heads = nn.ModuleList(
-        #     [Attention(head_dim, head_size, block_size) for _ in range(num_heads)]
-        # )
 
     def forward(self, queries: torch.Tensor, keys: torch.Tensor, values: torch.Tensor):
         """ "Forward pass through Multiheaded Attention;
@@ -139,8 +136,11 @@ class Attention(nn.Module):
         return context
 
 
-class MHAFeatureMaps(nn.Module):
-    """TODO
+class MultiheadedAttentionFM(nn.Module):
+    """Multiheaded Attention with feature maps
+    
+    This is essentially the same as MHA but the h,w features of the 
+    feature maps need to be flattened first
 
     This implementation is based on: https://github.com/w86763777/pytorch-ddpm/blob/f804ccbd58a758b07f79a3b9ecdfb1beb67258f6/model.py#L78
     but modified to use multiple heads
@@ -242,7 +242,7 @@ class MHAFeatureMaps(nn.Module):
         return attention_proj
     
 
-class ResBlock(nn.Module):
+class ResnetBlock(nn.Module):
     """TODO
     
     Implementation based on: https://github.com/w86763777/pytorch-ddpm/blob/f804ccbd58a758b07f79a3b9ecdfb1beb67258f6/model.py#L116
@@ -272,11 +272,11 @@ class ResBlock(nn.Module):
             nn.SiLU(),
             nn.GroupNorm(32, out_ch),
             nn.Dropout(dropout)
-
         )
 
+        # Whether to add a point-wise conv skip connection or a regular skip connection;
+        # in the default parameters the point-wise conv is applied at the end of each unet level
         if in_ch != out_ch:
-            # last layer of the unet "level"
             self.shortcut = nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=1, padding=0)
         else:
             self.shortcut = nn.Identity()

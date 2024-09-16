@@ -9,19 +9,16 @@ from random import random
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.nn import Module, ModuleList
 from torchvision import transforms as T
 
 from diffusion.models.positional import SinusoidalPosEmb
-from diffusion.models.layers import MHAFeatureMaps
+from diffusion.models.layers import MultiheadedAttentionFM, ResnetBlock
 
 
 class Unet(Module):
     """Unet model to be trained for diffusion during the reverse process
 
     This is the only training that is performed in diffusion.
-
-    In depth UNet architecture diagram: https://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
     """
 
     def __init__(
@@ -35,6 +32,7 @@ class Unet(Module):
         dropout=0.0,
         attn_dim_head=32,
         attn_heads=4,
+        attn_levels = [False, False, False, True],
         flash_attn=False,
     ):
         """Initialize UNet model
@@ -43,9 +41,11 @@ class Unet(Module):
             dim:
             dim_mults: Multiplier for dim which sets the number of channels in the unet model
             attn_heads: Number of heads in mult-head attntion
+            attn_levels: The levels of UNet to perform attention after; the default parameters apply attention
+                         only to the last level (i.e., before the middle layers)
         """
         super().__init__()
-
+        
         # determine dimensions
 
         self.channels = channels
@@ -60,7 +60,8 @@ class Unet(Module):
         # Create the channels of the model (5,)
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
 
-        # Pair the downsampled channels with the upsampled channels [(down[0], up[1]) ...]
+        # Pair the channels for each ResnetBlock 
+        # Ex: dims = [64, 64, 128, 256, 512] -> in_out_ch = [(64, 64), ..., (256, 512)]
         in_out_ch = list(zip(dims[:-1], dims[1:]))
 
         # Dimension of the noise time embeddings
@@ -78,38 +79,51 @@ class Unet(Module):
             nn.Linear(time_dim, time_dim),
         )
 
+        # Number of Unet levels
         num_stages = len(dim_mults)
-
+        
+        if len(attn_levels) != num_stages:
+            raise ValueError("Length of attn_levels should be the same as the length of dim_mults")
+        
+        # TODO
         attn_heads = (attn_heads,) * num_stages
         attn_dim_head = (attn_dim_head,) * num_stages
 
         # Create Unet layers
-        self.downs = ModuleList([])
-        self.ups = ModuleList([])
+        self.downs = nn.ModuleList([])
+        self.ups = nn.ModuleList([])
         num_resolutions = len(in_out_ch)
 
         # Initialize the decoder layers of unet (downsampling)
-        for ind, (
+        for unet_layer, (
             (dim_in, dim_out),
             layer_attn_heads,
             layer_attn_dim_head,
-        ) in enumerate(zip(in_out_ch, attn_heads, attn_dim_head)):
-            is_last = ind >= (num_resolutions - 1)
+            attn,
+        ) in enumerate(zip(in_out_ch, attn_heads, attn_dim_head, attn_levels)):
+            is_last = unet_layer >= (num_resolutions - 1)
 
-            self.downs.append(
-                ModuleList(
+            # Whether to perform attention for the current Unet level; 
+            # the default parameters only use attention for the last Unet level (before the middle layers)
+            level_layers = nn.ModuleList(
                     [
-                        resnet_block(dim_in, dim_in),
-                        resnet_block(dim_in, dim_in),
-                        Attention(
+                        ResnetBlock(dim_in, dim_in),
+                        ResnetBlock(dim_in, dim_in),
+                        MultiheadedAttentionFM(
                             dim_in, dim_head=layer_attn_dim_head, heads=layer_attn_heads
-                        ),
-                        Downsample(dim_in, dim_out)
-                        if not is_last
-                        else nn.Conv2d(dim_in, dim_out, 3, padding=1),
+                        ) if attn else nn.Identity(),
+
                     ]
                 )
-            )
+            
+            # Downsample by a factor of 2 if not the last unet level
+            #############    START HERE IMPLEMENT UNET #############
+            if unet_layer != (unet_layer - 1): 
+                level_layers.append(Downsample(dim_in, dim_out))
+                                        
+            # Append the level to the list of downsample levels
+            self.downs.append(level_layers)
+                
 
         mid_dim = dims[-1]
         self.mid_block1 = resnet_block(mid_dim, mid_dim)
