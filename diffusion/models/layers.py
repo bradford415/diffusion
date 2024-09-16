@@ -292,6 +292,23 @@ class ResnetBlock(nn.Module):
         x += self.time_proj(time_emb)[:, :, None, None]
 
         x = self.block2(x)
+        
+
+class Downsample(nn.Module):
+    """Downsample feature map; this is used at the last layer of each unet level"""
+    
+    def __init__(self, in_ch: torch.Tensor):
+        """Initialize downsample module"""
+        
+        # Downsample by factor of 2
+        self.conv = nn.Conv2d(in_ch, in_ch, kernel_size=3, stride=2, padding=1)
+        
+    def forward(self, x, time_emb):
+        """TODO
+        """
+        x = self.conv(x)
+        return x
+        
 
 
 

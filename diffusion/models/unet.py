@@ -12,10 +12,10 @@ from torch import nn
 from torchvision import transforms as T
 
 from diffusion.models.positional import SinusoidalPosEmb
-from diffusion.models.layers import MultiheadedAttentionFM, ResnetBlock
+from diffusion.models.layers import MultiheadedAttentionFM, ResnetBlock, Downsample
 
 
-class Unet(Module):
+class Unet(nn.Module):
     """Unet model to be trained for diffusion during the reverse process
 
     This is the only training that is performed in diffusion.
@@ -94,7 +94,7 @@ class Unet(Module):
         self.ups = nn.ModuleList([])
         num_resolutions = len(in_out_ch)
 
-        # Initialize the decoder layers of unet (downsampling)
+        # Initialize the encoder layers of unet (downsampling)
         for unet_layer, (
             (dim_in, dim_out),
             layer_attn_heads,
@@ -117,21 +117,22 @@ class Unet(Module):
                 )
             
             # Downsample by a factor of 2 if not the last unet level
-            #############    START HERE IMPLEMENT DOWNSAMPLING #############
             if unet_layer != (unet_layer - 1): 
                 level_layers.append(Downsample(dim_in, dim_out))
                                         
             # Append the level to the list of downsample levels
             self.downs.append(level_layers)
                 
-
+        # Initialize the middle layers of unet
         mid_dim = dims[-1]
-        self.mid_block1 = resnet_block(mid_dim, mid_dim)
-        self.mid_attn = FullAttention(
+        self.mid_block1 = ResnetBlock(mid_dim, mid_dim)
+        self.mid_attn = MultiheadedAttentionFM(
             mid_dim, heads=attn_heads[-1], dim_head=attn_dim_head[-1]
         )
-        self.mid_block2 = resnet_block(mid_dim, mid_dim)
+        self.mid_block2 = ResnetBlock(mid_dim, mid_dim)
 
+        # Initialize the decoder layer of unet (upsampling)
+        ###################### START HERE
         for ind, (
             (dim_in, dim_out),
             layer_full_attn,
