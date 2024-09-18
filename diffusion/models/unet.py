@@ -96,7 +96,7 @@ class Unet(nn.Module):
 
         # Initialize the encoder layers of unet (downsampling)
         for unet_layer, (
-            (dim_in, dim_out),
+            (ch_in, ch_out),
             layer_attn_heads,
             layer_attn_dim_head,
             attn,
@@ -107,10 +107,10 @@ class Unet(nn.Module):
             # the default parameters only use attention for the last Unet level (before the middle layers)
             level_layers = nn.ModuleList(
                     [
-                        ResnetBlock(dim_in, dim_in),
-                        ResnetBlock(dim_in, dim_in),
+                        ResnetBlock(ch_in, ch_in),
+                        ResnetBlock(ch_in, ch_in),
                         MultiheadedAttentionFM(
-                            dim_in, dim_head=layer_attn_dim_head, heads=layer_attn_heads
+                            ch_in, dim_head=layer_attn_dim_head, heads=layer_attn_heads
                         ) if attn else nn.Identity(),
 
                     ]
@@ -132,19 +132,16 @@ class Unet(nn.Module):
         self.mid_block2 = ResnetBlock(mid_dim, mid_dim)
 
         # Initialize the decoder layer of unet (upsampling)
-        ###################### START HERE
-        for ind, (
-            (dim_in, dim_out),
-            layer_full_attn,
-            layer_attn_heads,
-            layer_attn_dim_head,
-        ) in enumerate(
-            zip(*map(reversed, (in_out_ch, full_attn, attn_heads, attn_dim_head)))
-        ):
-            is_last = ind == (len(in_out_ch) - 1)
-
-            attn_klass = FullAttention if layer_full_attn else LinearAttention
-
+        # ###################### START HERE
+        # for ind, (
+        #     (dim_in, dim_out),
+        #     layer_full_attn,
+        #     layer_attn_heads,
+        #     layer_attn_dim_head,
+        # ) in enumerate(
+        #     zip(*map(reversed, (in_out_ch, attn_heads, attn_dim_head, attn_levels)))
+        # ):
+            for index, (ch_in, ch_out) in reversed(in_out_ch)
             self.ups.append(
                 ModuleList(
                     [
