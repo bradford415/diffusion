@@ -38,7 +38,6 @@ class MultiheadAttention(nn.Module):
 
         self.linear_proj = nn.linear(embed_dim, embed_dim, bias=False)
 
-
     def forward(self, queries: torch.Tensor, keys: torch.Tensor, values: torch.Tensor):
         """ "Forward pass through Multiheaded Attention;
         for self-attention the queries, keys, and values should be the same
@@ -138,8 +137,8 @@ class Attention(nn.Module):
 
 class MultiheadedAttentionFM(nn.Module):
     """Multiheaded Attention with feature maps
-    
-    This is essentially the same as MHA but the h,w features of the 
+
+    This is essentially the same as MHA but the h,w features of the
     feature maps need to be flattened first
 
     This implementation is based on: https://github.com/w86763777/pytorch-ddpm/blob/f804ccbd58a758b07f79a3b9ecdfb1beb67258f6/model.py#L78
@@ -240,22 +239,22 @@ class MultiheadedAttentionFM(nn.Module):
         attention_proj = self.final_proj(attention)
 
         return attention_proj
-    
+
 
 class ResnetBlock(nn.Module):
     """TODO
-    
+
     Implementation based on: https://github.com/w86763777/pytorch-ddpm/blob/f804ccbd58a758b07f79a3b9ecdfb1beb67258f6/model.py#L116
     """
 
-    def __init__(self, in_ch, out_ch, time_emb_dim=None, dropout = 0.0):
+    def __init__(self, in_ch, out_ch, time_emb_dim=None, dropout=0.0):
         """TODO"""
         super().__init__()
 
         if time_emb_dim is not None:
             self.time_proj = nn.Sequential(
                 nn.SiLU(),
-                nn.Linear(time_emb_dim, out_ch * 2)#nn.Linear(time_emb_dim, out_ch)
+                nn.Linear(time_emb_dim, out_ch * 2),  # nn.Linear(time_emb_dim, out_ch)
             )
 
         # NOTE: It looks like the original implementation reverses the order i.e., conv2d last: https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L45
@@ -264,14 +263,13 @@ class ResnetBlock(nn.Module):
             nn.Conv2d(in_ch, out_ch, kernel_Size=3, stride=1, padding=1),
             nn.SiLU(),
             nn.GroupNorm(32, in_ch),
-            nn.Dropout(dropout)
-
+            nn.Dropout(dropout),
         )
         self.block2 = nn.Sequential(
             nn.Conv2d(out_ch, out_ch, kernel_Size=3, stride=1, padding=1),
             nn.SiLU(),
             nn.GroupNorm(32, out_ch),
-            nn.Dropout(dropout)
+            nn.Dropout(dropout),
         )
 
         # Whether to add a point-wise conv skip connection or a regular skip connection;
@@ -283,33 +281,43 @@ class ResnetBlock(nn.Module):
 
     def forward(self, x, time_emb):
         """TODO"""
-        
+
         x = self.block1(x)
 
         # Add projected time embeddings to the feature maps ;
         # (b, out_ch, h, w) + (b, out_ch, 1, 1)
-        # this broadcasts the value of the time_emb accross the feature map h & w 
+        # this broadcasts the value of the time_emb accross the feature map h & w
         x += self.time_proj(time_emb)[:, :, None, None]
 
         x = self.block2(x)
-        
+
 
 class Downsample(nn.Module):
-    """Downsample feature map; this is used at the last layer of each unet level"""
-    
+    """Downsample feature map; this is used at the last layer of each unet encoder level"""
+
     def __init__(self, in_ch: torch.Tensor):
         """Initialize downsample module"""
-        
+
         # Downsample by factor of 2
         self.conv = nn.Conv2d(in_ch, in_ch, kernel_size=3, stride=2, padding=1)
-        
-    def forward(self, x, time_emb):
-        """TODO
-        """
+
+    def forward(self, x):
+        """TODO"""
         x = self.conv(x)
         return x
-        
 
 
+class Upsample(nn.Module):
+    """Upsample feature maps; this is used at the last layer of each unet decoder level"""
 
+    def __init__(self, in_ch: torch.Tensor):
+        """Initialize upsample module"""
 
+        self.conv = nn.Conv2d(in_ch, in_ch, kernel_size=3, stride=1, padding=1)
+
+    def forward(self, x):
+        """TODO"""
+        # Upsample by a factor of 2 with nearest neighbors
+        x = F.interpolate(x, scale_factor=2, mode="nearest")
+        x = self.conv(x)
+        return x
