@@ -126,8 +126,7 @@ class Unet(nn.Module):
             if unet_layer != (num_resolutions - 1):
                 level_layers.append(Downsample(ch_in, ch_out))
             else:
-                # Keeps ModuleList() the same length which helps in the forward pass
-                level_layers.append(nn.Identity())
+                level_layers.append(nn.Conv2d(ch_in, ch_out, 3, padding = 1))
 
             # Append the level to the list of downsample levels
             self.down_layers.append(level_layers)
@@ -157,11 +156,12 @@ class Unet(nn.Module):
         ) in enumerate(zip(in_out_ch, attn_heads, attn_dim_head, attn_levels)):
             level_layers = nn.ModuleList(
                 [
-                    # Mid layers use ch_out and down layers use ch_in therefore we need ch_out+ch_in channels
+                    # Mid layers use ch_out and down layers use ch_in therefore we need 
+                    # ch_out+ch_in channels for channel-wise concatenation
                     ResnetBlock(ch_out + ch_in, ch_out),
                     ResnetBlock(
                         ch_out + ch_in, ch_out
-                    ),  # not entriely sure why the 2nd block needs this though
+                    ),
                     MultiheadedAttentionFM(
                         ch_out,
                         dim_head=layer_attn_dim_head,
@@ -175,6 +175,8 @@ class Unet(nn.Module):
             # Upsample feature maps by a factor of 2 if not the last unet decoder level
             if unet_layer != (num_resolutions - 1):
                 level_layers.append(Upsample(ch_in, ch_out))
+            else:
+                level_layers.append(nn.Conv2d(ch_out, ch_in, 3, padding = 1))
 
             self.up_layers.append(level_layers)
 
@@ -184,10 +186,6 @@ class Unet(nn.Module):
         
         # Final convolution to return to rgb channels
         self.final_conv = nn.Conv2d(init_dim, self.out_ch, 1)
-
-    @property
-    def downsample_factor(self):
-        return 2 ** (len(self.self.down_layers) - 1)
 
     def forward(self, x, time, x_self_cond=None):
         """Forward pass of Unet
@@ -205,37 +203,42 @@ class Unet(nn.Module):
         # Project the noise time embedding (b, time_dim)
         time = self.time_mlp(time)
 
-        h = []
+        feature_maps = [x]
 
-        # Decoder layers
+        # Encoder layers 
         for block1, block2, attn, downsample in self.down_layers:
             x = block1(x, time)
             
-            # Appends the feature maps 
-            h.append(x)
+            # Appends the feature maps so they can be concatenated during upsampling
+            feature_maps.append(x)
 
             x = block2(x, time)
             x = attn(x) + x
-            h.append(x)
+            feature_maps.append(x)
 
-            if downsample is not None:
-                x = downsample(x)
+            x = downsample(x)
 
+        # Middle of Unet
         x = self.mid_block1(x, time)
         x = self.mid_attn(x) + x
         x = self.mid_block2(x, time)
 
+        # Decoder layers
         for block1, block2, attn, upsample in self.self.up_layers:
-            x = torch.cat((x, h.pop()), dim=1)
+            x = torch.cat((x, feature_maps.pop()), dim=1)
             x = block1(x, time)
 
-            x = torch.cat((x, h.pop()), dim=1)
+            x = torch.cat((x, feature_maps.pop()), dim=1)
             x = block2(x, time)
             x = attn(x) + x
 
             x = upsample(x)
 
-        x = torch.cat((x, r), dim=1)
-
+        # TODO: remove assert once I know it passes
+        assert torch.allclose(feature_maps[0] == r)
+        x = torch.cat((x, feature_maps.pop()), dim=1)
         x = self.final_res_block(x, time)
+        assert len(feature_maps) == 0
+        
+        # Restore original input channels
         return self.final_conv(x)
