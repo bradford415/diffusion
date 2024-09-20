@@ -75,12 +75,11 @@ class Unet(nn.Module):
 
         # Initialize postional embeddings for the noise timesteps
         sinu_pos_emb = SinusoidalPosEmb(dim, theta=sinusoidal_pos_emb_theta)
-        fourier_dim = dim
 
         # Positional embedding module
         self.time_mlp = nn.Sequential(
             sinu_pos_emb,
-            nn.Linear(fourier_dim, time_dim),
+            nn.Linear(dim, time_dim),
             nn.GELU(),
             nn.Linear(time_dim, time_dim),
         )
@@ -98,8 +97,8 @@ class Unet(nn.Module):
         attn_dim_head = (attn_dim_head,) * num_stages
 
         # Create Unet layers
-        self.downs = nn.ModuleList([])
-        self.ups = nn.ModuleList([])
+        self.down_layers = nn.ModuleList([])
+        self.up_layers = nn.ModuleList([])
         num_resolutions = len(in_out_ch)
 
         # Initialize the encoder layers of unet (downsampling)
@@ -126,9 +125,12 @@ class Unet(nn.Module):
             # Downsample by a factor of 2 if not the last unet level
             if unet_layer != (num_resolutions - 1):
                 level_layers.append(Downsample(ch_in, ch_out))
+            else:
+                # Keeps ModuleList() the same length which helps in the forward pass
+                level_layers.append(nn.Identity())
 
             # Append the level to the list of downsample levels
-            self.downs.append(level_layers)
+            self.down_layers.append(level_layers)
 
         # Initialize the middle layers of unet
         mid_dim = dims[-1]
@@ -145,14 +147,6 @@ class Unet(nn.Module):
             attn_dim_head[::-1],
             attn_levels[::-1],
         )
-        # for ind, (
-        #     (dim_in, dim_out),
-        #     layer_full_attn,
-        #     layer_attn_heads,
-        #     layer_attn_dim_head,
-        # ) in enumerate(
-        #     zip(*map(reversed, (in_out_ch, attn_heads, attn_dim_head, attn_levels)))
-        # ):
 
         # Initialize the decoder layers of unet (upsampling)
         for unet_layer, (
@@ -182,7 +176,7 @@ class Unet(nn.Module):
             if unet_layer != (num_resolutions - 1):
                 level_layers.append(Upsample(ch_in, ch_out))
 
-            self.ups.append(level_layers)
+            self.up_layers.append(level_layers)
 
         self.out_ch = image_ch * 1  # (1 if not learned_variance else 2)
 
@@ -193,49 +187,55 @@ class Unet(nn.Module):
 
     @property
     def downsample_factor(self):
-        return 2 ** (len(self.downs) - 1)
+        return 2 ** (len(self.self.down_layers) - 1)
 
     def forward(self, x, time, x_self_cond=None):
-        assert all(
-            [divisible_by(d, self.downsample_factor) for d in x.shape[-2:]]
-        ), f"your input dimensions {x.shape[-2:]} need to be divisible by {self.downsample_factor}, given the unet"
+        """Forward pass of Unet
 
-        if self.self_condition:
-            x_self_cond = default(x_self_cond, lambda: torch.zeros_like(x))
-            x = torch.cat((x_self_cond, x), dim=1)
+        Args:
+            x: Preprocessed image input to unet (b, c, h, w)
+            time: Noise time embeddings (b, dim) TODO verify this shape
+        """
+
+        # TODO: Maybe put input image divisble check
 
         x = self.init_conv(x)
         r = x.clone()
 
-        t = self.time_mlp(time)
+        # Project the noise time embedding (b, time_dim)
+        time = self.time_mlp(time)
 
         h = []
 
-        for block1, block2, attn, downsample in self.downs:
-            x = block1(x, t)
+        # Decoder layers
+        for block1, block2, attn, downsample in self.down_layers:
+            x = block1(x, time)
+            
+            # Appends the feature maps 
             h.append(x)
 
-            x = block2(x, t)
+            x = block2(x, time)
             x = attn(x) + x
             h.append(x)
 
-            x = downsample(x)
+            if downsample is not None:
+                x = downsample(x)
 
-        x = self.mid_block1(x, t)
+        x = self.mid_block1(x, time)
         x = self.mid_attn(x) + x
-        x = self.mid_block2(x, t)
+        x = self.mid_block2(x, time)
 
-        for block1, block2, attn, upsample in self.ups:
+        for block1, block2, attn, upsample in self.self.up_layers:
             x = torch.cat((x, h.pop()), dim=1)
-            x = block1(x, t)
+            x = block1(x, time)
 
             x = torch.cat((x, h.pop()), dim=1)
-            x = block2(x, t)
+            x = block2(x, time)
             x = attn(x) + x
 
             x = upsample(x)
 
         x = torch.cat((x, r), dim=1)
 
-        x = self.final_res_block(x, t)
+        x = self.final_res_block(x, time)
         return self.final_conv(x)

@@ -32,7 +32,7 @@ class SinusoidalPosEmb(nn.Module):
                       from [0, num_timesteps]
 
         Return:
-            TODO
+            (B, dim)
         """
         device = timestep.device
         half_dim = self.dim // 2

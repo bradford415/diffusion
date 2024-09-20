@@ -142,7 +142,6 @@ class MultiheadedAttentionFM(nn.Module):
     feature maps need to be flattened first
 
     This implementation is based on: https://github.com/w86763777/pytorch-ddpm/blob/f804ccbd58a758b07f79a3b9ecdfb1beb67258f6/model.py#L78
-    but modified to use multiple heads
     """
 
     def __init__(self, embed_ch, num_heads):
@@ -280,7 +279,12 @@ class ResnetBlock(nn.Module):
             self.shortcut = nn.Identity()
 
     def forward(self, x, time_emb):
-        """TODO"""
+        """Forward pass through ResNetBlock with time embeddings
+
+        Args:
+            x: Feature maps (B, C, H, W)
+            time_emb: (B, time_dim) TODO: Verify this shape
+        """
 
         x = self.block1(x)
 
@@ -290,7 +294,8 @@ class ResnetBlock(nn.Module):
         x += self.time_proj(time_emb)[:, :, None, None]
 
         x = self.block2(x)
-
+        
+        return x
 
 class Downsample(nn.Module):
     """Downsample feature map; this is used at the last layer of each unet encoder level"""
