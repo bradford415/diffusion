@@ -12,7 +12,12 @@ from torch import nn
 from torchvision import transforms as T
 
 from diffusion.models.positional import SinusoidalPosEmb
-from diffusion.models.layers import MultiheadedAttentionFM, ResnetBlock, Downsample, Upsample
+from diffusion.models.layers import (
+    MultiheadedAttentionFM,
+    ResnetBlock,
+    Downsample,
+    Upsample,
+)
 
 
 class Unet(nn.Module):
@@ -25,7 +30,7 @@ class Unet(nn.Module):
         self,
         dim,
         dim_mults=(1, 2, 4, 8),
-        channels=3,
+        image_ch=3,
         self_condition=False,
         learned_variance=False,
         sinusoidal_pos_emb_theta=10000,
@@ -40,6 +45,7 @@ class Unet(nn.Module):
         Args:
             dim:
             dim_mults: Multiplier for dim which sets the number of channels in the unet model
+            img_channels: Number of channels in the original image and output image; rgb=3 grayscale=1
             attn_heads: Number of heads in mult-head attntion
             attn_levels: The levels of UNet to perform attention after; the default parameters apply attention
                          only to the last level (i.e., before the middle layers)
@@ -48,9 +54,9 @@ class Unet(nn.Module):
 
         # determine dimensions
 
-        self.channels = channels
+        self.channels = image_ch
         self.self_condition = self_condition
-        input_channels = channels * (2 if self_condition else 1)
+        input_channels = image_ch * 1 # (2 if self_condition else 1)
 
         init_dim = dim
 
@@ -103,7 +109,6 @@ class Unet(nn.Module):
             layer_attn_dim_head,
             attn,
         ) in enumerate(zip(in_out_ch, attn_heads, attn_dim_head, attn_levels)):
-
             # Whether to perform attention for the current Unet level;
             # the default parameters only use attention for the last Unet level (before the middle layers)
             level_layers = nn.ModuleList(
@@ -133,7 +138,7 @@ class Unet(nn.Module):
         )
         self.mid_block2 = ResnetBlock(mid_dim, mid_dim)
 
-        # Reverse unet level parameters for the upsampling process 
+        # Reverse unet level parameters for the upsampling process
         in_out_ch, attn_heads, attn_dim_head, attn_levels = (
             in_out_ch[::-1],
             attn_heads[::-1],
@@ -149,7 +154,7 @@ class Unet(nn.Module):
         #     zip(*map(reversed, (in_out_ch, attn_heads, attn_dim_head, attn_levels)))
         # ):
 
-        # Initialize the decoder layer of unet (upsampling)
+        # Initialize the decoder layers of unet (upsampling)
         for unet_layer, (
             (ch_in, ch_out),
             layer_attn_heads,
@@ -158,9 +163,11 @@ class Unet(nn.Module):
         ) in enumerate(zip(in_out_ch, attn_heads, attn_dim_head, attn_levels)):
             level_layers = nn.ModuleList(
                 [
+                    # Mid layers use ch_out and down layers use ch_in therefore we need ch_out+ch_in channels
                     ResnetBlock(ch_out + ch_in, ch_out),
-                    ResnetBlock(ch_out + ch_in, ch_out),
-
+                    ResnetBlock(
+                        ch_out + ch_in, ch_out
+                    ),  # not entriely sure why the 2nd block needs this though
                     MultiheadedAttentionFM(
                         ch_out,
                         dim_head=layer_attn_dim_head,
@@ -170,18 +177,19 @@ class Unet(nn.Module):
                     else nn.Identity(),
                 ]
             )
-            
+
             # Upsample feature maps by a factor of 2 if not the last unet decoder level
             if unet_layer != (num_resolutions - 1):
                 level_layers.append(Upsample(ch_in, ch_out))
-                
+
             self.ups.append(level_layers)
 
-        ################ START HERE, also verify upsample is right
-        self.out_dim = channels * (1 if not learned_variance else 2)
+        self.out_ch = image_ch * 1  # (1 if not learned_variance else 2)
 
-        self.final_res_block = resnet_block(init_dim * 2, init_dim)
-        self.final_conv = nn.Conv2d(init_dim, self.out_dim, 1)
+        self.final_res_block = ResnetBlock(init_dim * 2, init_dim)
+        
+        # Final convolution to return to rgb channels
+        self.final_conv = nn.Conv2d(init_dim, self.out_ch, 1)
 
     @property
     def downsample_factor(self):
