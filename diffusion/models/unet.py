@@ -35,7 +35,7 @@ class Unet(nn.Module):
         learned_variance=False,
         sinusoidal_pos_emb_theta=10000,
         dropout=0.0,
-        attn_dim_head=32,
+        attn_ch=128,
         attn_heads=4,
         attn_levels=[False, False, False, True],
         flash_attn=False,
@@ -46,6 +46,8 @@ class Unet(nn.Module):
             dim:
             dim_mults: Multiplier for dim which sets the number of channels in the unet model
             img_channels: Number of channels in the original image and output image; rgb=3 grayscale=1
+            attn_ch: Total channels for MHA; embed_ch will be split across
+                       num_heads (attn_ch // num_heads) after it's projected
             attn_heads: Number of heads in mult-head attntion
             attn_levels: The levels of UNet to perform attention after; the default parameters apply attention
                          only to the last level (i.e., before the middle layers)
@@ -56,7 +58,7 @@ class Unet(nn.Module):
 
         self.channels = image_ch
         self.self_condition = self_condition
-        input_channels = image_ch * 1 # (2 if self_condition else 1)
+        input_channels = image_ch * 1  # (2 if self_condition else 1)
 
         init_dim = dim
 
@@ -94,7 +96,7 @@ class Unet(nn.Module):
 
         # TODO
         attn_heads = (attn_heads,) * num_stages
-        attn_dim_head = (attn_dim_head,) * num_stages
+        attn_chh = (attn_chh,) * num_stages
 
         # Create Unet layers
         self.down_layers = nn.ModuleList([])
@@ -105,9 +107,9 @@ class Unet(nn.Module):
         for unet_layer, (
             (ch_in, ch_out),
             layer_attn_heads,
-            layer_attn_dim_head,
+            layer_attn_chh,
             attn,
-        ) in enumerate(zip(in_out_ch, attn_heads, attn_dim_head, attn_levels)):
+        ) in enumerate(zip(in_out_ch, attn_heads, attn_chh, attn_levels)):
             # Whether to perform attention for the current Unet level;
             # the default parameters only use attention for the last Unet level (before the middle layers)
             level_layers = nn.ModuleList(
@@ -115,7 +117,7 @@ class Unet(nn.Module):
                     ResnetBlock(ch_in, ch_in),
                     ResnetBlock(ch_in, ch_in),
                     MultiheadedAttentionFM(
-                        ch_in, dim_head=layer_attn_dim_head, heads=layer_attn_heads
+                        embed_ch=layer_attn_chh, heads=layer_attn_heads
                     )
                     if attn
                     else nn.Identity(),
@@ -126,7 +128,7 @@ class Unet(nn.Module):
             if unet_layer != (num_resolutions - 1):
                 level_layers.append(Downsample(ch_in, ch_out))
             else:
-                level_layers.append(nn.Conv2d(ch_in, ch_out, 3, padding = 1))
+                level_layers.append(nn.Conv2d(ch_in, ch_out, 3, padding=1))
 
             # Append the level to the list of downsample levels
             self.down_layers.append(level_layers)
@@ -135,15 +137,15 @@ class Unet(nn.Module):
         mid_dim = dims[-1]
         self.mid_block1 = ResnetBlock(mid_dim, mid_dim)
         self.mid_attn = MultiheadedAttentionFM(
-            mid_dim, heads=attn_heads[-1], dim_head=attn_dim_head[-1]
+            heads=attn_heads[-1], dim_head=attn_chh[-1]
         )
         self.mid_block2 = ResnetBlock(mid_dim, mid_dim)
 
         # Reverse unet level parameters for the upsampling process
-        in_out_ch, attn_heads, attn_dim_head, attn_levels = (
+        in_out_ch, attn_heads, attn_chh, attn_levels = (
             in_out_ch[::-1],
             attn_heads[::-1],
-            attn_dim_head[::-1],
+            attn_chh[::-1],
             attn_levels[::-1],
         )
 
@@ -151,20 +153,18 @@ class Unet(nn.Module):
         for unet_layer, (
             (ch_in, ch_out),
             layer_attn_heads,
-            layer_attn_dim_head,
+            layer_attn_ch,
             attn,
-        ) in enumerate(zip(in_out_ch, attn_heads, attn_dim_head, attn_levels)):
+        ) in enumerate(zip(in_out_ch, attn_heads, attn_ch, attn_levels)):
             level_layers = nn.ModuleList(
                 [
-                    # Mid layers use ch_out and down layers use ch_in therefore we need 
+                    # Mid layers use ch_out and down layers use ch_in therefore we need
                     # ch_out+ch_in channels for channel-wise concatenation
                     ResnetBlock(ch_out + ch_in, ch_out),
-                    ResnetBlock(
-                        ch_out + ch_in, ch_out
-                    ),
+                    ResnetBlock(ch_out + ch_in, ch_out),
                     MultiheadedAttentionFM(
                         ch_out,
-                        dim_head=layer_attn_dim_head,
+                        dim_head=layer_attn_ch,
                         heads=layer_attn_heads,
                     )
                     if attn
@@ -176,14 +176,14 @@ class Unet(nn.Module):
             if unet_layer != (num_resolutions - 1):
                 level_layers.append(Upsample(ch_in, ch_out))
             else:
-                level_layers.append(nn.Conv2d(ch_out, ch_in, 3, padding = 1))
+                level_layers.append(nn.Conv2d(ch_out, ch_in, 3, padding=1))
 
             self.up_layers.append(level_layers)
 
         self.out_ch = image_ch * 1  # (1 if not learned_variance else 2)
 
         self.final_res_block = ResnetBlock(init_dim * 2, init_dim)
-        
+
         # Final convolution to return to rgb channels
         self.final_conv = nn.Conv2d(init_dim, self.out_ch, 1)
 
@@ -205,10 +205,10 @@ class Unet(nn.Module):
 
         feature_maps = [x]
 
-        # Encoder layers 
+        # Encoder layers
         for block1, block2, attn, downsample in self.down_layers:
             x = block1(x, time)
-            
+
             # Appends the feature maps so they can be concatenated during upsampling
             feature_maps.append(x)
 
@@ -236,9 +236,10 @@ class Unet(nn.Module):
 
         # TODO: remove assert once I know it passes
         assert torch.allclose(feature_maps[0] == r)
+
         x = torch.cat((x, feature_maps.pop()), dim=1)
         x = self.final_res_block(x, time)
         assert len(feature_maps) == 0
-        
+
         # Restore original input channels
         return self.final_conv(x)

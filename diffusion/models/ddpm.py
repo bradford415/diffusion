@@ -1,5 +1,9 @@
+import math
+from typing import Tuple
+
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 
 class GaussianDiffusion(nn.Module):
@@ -7,7 +11,7 @@ class GaussianDiffusion(nn.Module):
         self,
         model,
         *,
-        image_size,
+        image_size: Tuple,
         timesteps=1000,
         sampling_timesteps=None,
         objective="pred_v",
@@ -20,6 +24,13 @@ class GaussianDiffusion(nn.Module):
         min_snr_gamma=5,
         immiscible=False,
     ):
+        """
+        Args:
+            model: A torch Unet model; theoretically this could be any encoder-decoder
+                   model which downsamples and upsamples back to the original input size
+            image_size: TODO: verify it is (h, w) tuple of orignal image size in the form of (height, width)
+
+        """
         super().__init__()
         assert not (type(self) == GaussianDiffusion and model.channels != model.out_dim)
         assert (
@@ -29,14 +40,10 @@ class GaussianDiffusion(nn.Module):
 
         self.model = model
 
+        # Input image channels (e.g., rgb = 3)
         self.channels = self.model.channels
         self.self_condition = self.model.self_condition
 
-        if isinstance(image_size, int):
-            image_size = (image_size, image_size)
-        assert (
-            isinstance(image_size, (tuple, list)) and len(image_size) == 2
-        ), "image size must be a integer or a tuple/list of two integers"
         self.image_size = image_size
 
         self.objective = objective
@@ -56,20 +63,22 @@ class GaussianDiffusion(nn.Module):
         else:
             raise ValueError(f"unknown beta schedule {beta_schedule}")
 
+        # Define the beta schedule; minumum and maximum noise to add
         betas = beta_schedule_fn(timesteps, **schedule_fn_kwargs)
 
+        # Define alphas; TODO: understand and comment this better
         alphas = 1.0 - betas
         alphas_cumprod = torch.cumprod(alphas, dim=0)
         alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
 
+        # Number of timesteps for diffusion; typically T = 1000
         (timesteps,) = betas.shape
         self.num_timesteps = int(timesteps)
 
-        # sampling related parameters
-
-        self.sampling_timesteps = default(
-            sampling_timesteps, timesteps
-        )  # default num sampling timesteps to number of timesteps at training
+        # TODO: Understand and comment sampling_timesteps;
+        self.sampling_timesteps = (
+            sampling_timesteps if sampling_timesteps is not None else timesteps
+        )
 
         assert self.sampling_timesteps <= timesteps
         self.is_ddim_sampling = self.sampling_timesteps < timesteps
@@ -443,3 +452,52 @@ class GaussianDiffusion(nn.Module):
 
         img = self.normalize(img)
         return self.p_losses(img, t, *args, **kwargs)
+
+
+# Variance schedulers to gradually add noise for the foward diffusion process;
+# the schedulers set the betas (minimum and maximum noise) which is the diffusion rate
+# TODO: should probably extract this to its own module
+def linear_beta_schedule(timesteps: int = 1000) -> torch.Tensor:
+    """Linear schedule proposed in original ddpm paper
+
+    Args:
+        timesteps: Total number of timesteps
+
+    Returns:
+        A tensor of the beta schedul (timesteps,)
+    """
+    scale = 1000 / timesteps
+    beta_start = scale * 0.0001
+    beta_end = scale * 0.02
+    return torch.linspace(beta_start, beta_end, timesteps, dtype=torch.float64)
+
+
+def cosine_beta_schedule(timesteps, s=0.008):
+    """
+    cosine schedule
+    as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
+    """
+    steps = timesteps + 1
+    t = torch.linspace(0, timesteps, steps, dtype=torch.float64) / timesteps
+    alphas_cumprod = torch.cos((t + s) / (1 + s) * math.pi * 0.5) ** 2
+    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+    return torch.clip(betas, 0, 0.999)
+
+
+def sigmoid_beta_schedule(timesteps, start=-3, end=3, tau=1, clamp_min=1e-5):
+    """
+    sigmoid schedule
+    proposed in https://arxiv.org/abs/2212.11972 - Figure 8
+    better for images > 64x64, when used during training
+    """
+    steps = timesteps + 1
+    t = torch.linspace(0, timesteps, steps, dtype=torch.float64) / timesteps
+    v_start = torch.tensor(start / tau).sigmoid()
+    v_end = torch.tensor(end / tau).sigmoid()
+    alphas_cumprod = (-((t * (end - start) + start) / tau).sigmoid() + v_end) / (
+        v_end - v_start
+    )
+    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+    return torch.clip(betas, 0, 0.999)

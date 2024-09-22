@@ -1,31 +1,71 @@
 # CIFAR 10/100 dataset copied from here: https://pytorch.org/vision/stable/_modules/torchvision/datasets/cifar.html#CIFAR10
 # Very slightly modified to keep consistent with the API I have been using
 from pathlib import Path
-from typing import Union
+from typing import Union, Tuple
 
 import numpy as np
-from torchvision import transforms
+from torchvision import transforms as T
 from torchvision.datasets import CIFAR10, CIFAR100
 
+from diffusion.data.transforms import UnNormalize
 
-def make_cifar_transforms(dataset_split):
-    """Initialize transforms for the coco dataset
 
-    These transforms are based on torchvision transforms but are overrided in data/transforms.py
-    This allows for slight modifications in the the transform
+# TODO: find a better place to put this (maybe return with make_cifa_transforms?)
+reverse_transforms = T.Compose(
+    [
+        UnNormalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+        T.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW to HWC
+        T.Lambda(lambda t: t * 255.0), # [0,1] -> [0, 255]
+        T.Lambda(lambda t: t.numpy().astype(np.uint8)),
+        T.toPILImage(),
+    ]
+)
+
+
+def make_cifar_transforms(
+    dataset_split,
+    resize_size: Union[int, Tuple] = 128,
+    crop_size: Union[int, Tuple, None] = None,
+    horizontal_flip=0.5,
+):
+    """Initialize transforms for the cifar dataset
 
     Args:
         dataset_split: which dataset split to use; `train` or `val`
+        resize_size: Image size to resize the image to (h, w); if scalar, the smaller
+                     image dimension will be resized to this value keeping the aspect ratio;
+                     if tuple both dimensions will be resized to this value but the aspect ratio
+                     will most likely not be maintained
+        crop_size: Center crop size; for the default case resize and crop size are the same, therefore,
+                   the center crop will have no effect; I believe this is here just in case the resize is
+                   different
+        horizontal_flip: Probability of the image being horiztonally flip; use 0.0 to disable horizontal flipping
+
 
     """
-    # Convert to tensor and normalize between [-1,1]
-    normalize = transforms.Compose(
-        [transforms.ToTensor(), transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])]
+    # The default case uses resize and crop size as the same value
+    if crop_size is None:
+        crop_size = resize_size
+
+    # Convert to tensor and normalize between [-1,1];
+    # NOTE: this normalization is the same as the original implementation (i.e., img * 2 -1)
+    normalize = T.Compose(
+        [
+            T.ToTensor(),
+            T.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+        ]
     )
 
     # For now, the train and test transforms are the same
     if dataset_split == "train":
-        return normalize
+        return T.compose(
+            [
+                T.Resize(resize_size),
+                T.RandomHorizontalFlip(p=horizontal_flip),
+                T.CenterCrop(crop_size),
+                normalize,
+            ]
+        )
     elif dataset_split == "test":
         return normalize
     else:

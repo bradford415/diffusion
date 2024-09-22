@@ -2,7 +2,7 @@ from typing import Optional
 
 import torch
 from torch import nn
-from torch.nn import function as F
+from torch.nn import functional as F
 
 
 class MultiheadAttention(nn.Module):
@@ -148,7 +148,7 @@ class MultiheadedAttentionFM(nn.Module):
         """TODO
 
         Args:
-            embed_ch: Total channels of the model; embed_ch will be split across
+            embed_ch: Total channels of the attention model; embed_ch will be split across
                        num_heads (embed_ch // num_heads) after it's projected
             num_heads: Number of attention heads; each head will have dimension
                        of embed_ch // num_heads
@@ -259,13 +259,13 @@ class ResnetBlock(nn.Module):
         # NOTE: It looks like the original implementation reverses the order i.e., conv2d last: https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L45
         #       but many implementations are written differently and more often Conv2d seems to be first
         self.block1 = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, kernel_Size=3, stride=1, padding=1),
+            nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
             nn.SiLU(),
             nn.GroupNorm(32, in_ch),
             nn.Dropout(dropout),
         )
         self.block2 = nn.Sequential(
-            nn.Conv2d(out_ch, out_ch, kernel_Size=3, stride=1, padding=1),
+            nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
             nn.SiLU(),
             nn.GroupNorm(32, out_ch),
             nn.Dropout(dropout),
@@ -294,20 +294,27 @@ class ResnetBlock(nn.Module):
         x += self.time_proj(time_emb)[:, :, None, None]
 
         x = self.block2(x)
-        
+
         return x
+
 
 class Downsample(nn.Module):
     """Downsample feature map; this is used at the last layer of each unet encoder level"""
 
-    def __init__(self, in_ch: torch.Tensor):
-        """Initialize downsample module"""
+    def __init__(self, in_ch: torch.Tensor, out_ch: torch.Tensor):
+        """Initialize downsample module
+
+        Args:
+            in_ch: The number of channels in the input feature map
+            out_ch: The number of output channels after convolution
+        """
+        super().__init__()
 
         # Downsample by factor of 2
-        self.conv = nn.Conv2d(in_ch, in_ch, kernel_size=3, stride=2, padding=1)
+        self.conv = nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=2, padding=1)
 
     def forward(self, x):
-        """TODO"""
+        """Downsample the feature map"""
         x = self.conv(x)
         return x
 
@@ -315,10 +322,10 @@ class Downsample(nn.Module):
 class Upsample(nn.Module):
     """Upsample feature maps; this is used at the last layer of each unet decoder level"""
 
-    def __init__(self, in_ch: torch.Tensor):
+    def __init__(self, in_ch: torch.Tensor, out_ch: torch.Tensor):
         """Initialize upsample module"""
-
-        self.conv = nn.Conv2d(in_ch, in_ch, kernel_size=3, stride=1, padding=1)
+        super().__init__()
+        self.conv = nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1)
 
     def forward(self, x):
         """TODO"""
