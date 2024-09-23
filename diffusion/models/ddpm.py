@@ -370,18 +370,35 @@ class GaussianDiffusion(nn.Module):
         _, assign = linear_sum_assignment(dist.cpu())
         return torch.from_numpy(assign).to(dist.device)
 
-    @autocast(enabled=False)
-    def q_sample(self, x_start, t, noise=None):
-        noise = default(noise, lambda: torch.randn_like(x_start))
+    # def q_sample(self, x_start, t, noise=None):
+    #     ####################### START HERE, probably use the non lucidrains version################# 
+    #     """Compute the mean 
+    #     """
+    #     noise = default(noise, lambda: torch.randn_like(x_start))
 
-        if self.immiscible:
-            assign = self.noise_assignment(x_start, noise)
-            noise = noise[assign]
+    #     if self.immiscible:
+    #         assign = self.noise_assignment(x_start, noise)
+    #         noise = noise[assign]
 
-        return (
-            extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
-            + extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
+    #     return (
+    #         extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
+    #         + extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
+    #     )
+    
+    def q_mean_variance(self, x_0, x_t, t):
+        ####################### START HERE, probably use the non lucidrains version################# 
+        """
+        Compute the mean and variance of the diffusion posterior
+        q(x_{t-1} | x_t, x_0)
+        """
+        assert x_0.shape == x_t.shape
+        posterior_mean = (
+            extract(self.posterior_mean_coef1, t, x_t.shape) * x_0 +
+            extract(self.posterior_mean_coef2, t, x_t.shape) * x_t
         )
+        posterior_log_var_clipped = extract(
+            self.posterior_log_var_clipped, t, x_t.shape)
+        return posterior_mean, posterior_log_var_clipped
 
     def p_losses(self, x_start, t, noise=None, offset_noise_strength=None):
         b, c, h, w = x_start.shape
@@ -452,6 +469,21 @@ class GaussianDiffusion(nn.Module):
 
         img = self.normalize(img)
         return self.p_losses(img, t, *args, **kwargs)
+    
+    
+def extract(v, t, x_shape):
+    """TODO: comment this much better once I understand it
+    Extract some coefficients at specified timesteps, then reshape to
+    [batch_size, 1, 1, 1, 1, ...] for broadcasting purposes.
+    
+    Args:
+        
+    """
+    # gather selects elements along an axis given by index; for example dim=0 is rows so the value
+    out = torch.gather(v, index=t, dim=0).float()
+    
+    return out.view([t.shape[0]] + [1] * (len(x_shape) - 1))
+
 
 
 # Variance schedulers to gradually add noise for the foward diffusion process;
