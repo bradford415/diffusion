@@ -7,6 +7,12 @@ from torch.nn import functional as F
 
 
 class GaussianDiffusion(nn.Module):
+    """
+    
+    q(x_{1:T} | x_{0}) is the forward diffusion process which adds noise according to a variance schedule β1, . . . , βT
+    p_θ(x_{0:T}) is reverse process 
+    
+    """
     def __init__(
         self,
         model,
