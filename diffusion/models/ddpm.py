@@ -7,10 +7,10 @@ from torch.nn import functional as F
 
 
 class GaussianDiffusion(nn.Module):
-    """
+    """DDPM model which is responsible for noising images and denoising with unet 
     
     q(x_{1:T} | x_{0}) is the forward diffusion process which adds noise according to a variance schedule β1, . . . , βT
-    p_θ(x_{0:T}) is reverse process 
+    p_θ(x_{0:T}) is the reverse process 
     
     """
     def __init__(
@@ -28,7 +28,6 @@ class GaussianDiffusion(nn.Module):
         offset_noise_strength=0.0,  # https://www.crosslabs.org/blog/diffusion-with-offset-noise
         min_snr_loss_weight=False,  # https://arxiv.org/abs/2303.09556
         min_snr_gamma=5,
-        immiscible=False,
     ):
         """
         Args:
@@ -137,13 +136,6 @@ class GaussianDiffusion(nn.Module):
             (1.0 - alphas_cumprod_prev) * torch.sqrt(alphas) / (1.0 - alphas_cumprod),
         )
 
-        # immiscible diffusion
-
-        self.immiscible = immiscible
-
-        # offset noise strength - in blogpost, they claimed 0.1 was ideal
-
-        self.offset_noise_strength = offset_noise_strength
 
         # derive loss weight
         # snr - signal noise ratio
@@ -376,20 +368,17 @@ class GaussianDiffusion(nn.Module):
         _, assign = linear_sum_assignment(dist.cpu())
         return torch.from_numpy(assign).to(dist.device)
 
-    # def q_sample(self, x_start, t, noise=None):
-    #     ####################### START HERE, probably use the non lucidrains version################# 
-    #     """Compute the mean 
-    #     """
-    #     noise = default(noise, lambda: torch.randn_like(x_start))
+    def q_sample(self, x_start, t, noise):
+        """
 
-    #     if self.immiscible:
-    #         assign = self.noise_assignment(x_start, noise)
-    #         noise = noise[assign]
+        Args:
+            noise: Random gaussian noise (b, c, h, w)
+        """
 
-    #     return (
-    #         extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
-    #         + extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
-    #     )
+        return (
+            extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
+            + extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
+        )
     
     def q_mean_variance(self, x_0, x_t, t):
         # TODO: Comment this once I understand it better
@@ -406,30 +395,23 @@ class GaussianDiffusion(nn.Module):
             self.posterior_log_var_clipped, t, x_t.shape)
         return posterior_mean, posterior_log_var_clipped
 
-    def p_losses(self, x_start, t, noise=None, offset_noise_strength=None):
+    def p_losses(self, x_start, timestep, noise=None):
         ############# START HERE ################################
-        """Main function that adds noise to the image and denoises it through the unet model
-        
+        """Main method that adds noise to the image and denoises it through the unet model
         
         Args:
-            x_start:
+            x_start: 
+            timestep:
+            noise: TODO: remove this if it's not used anywhere
         """
         b, c, h, w = x_start.shape
 
+        # Sample random noise from a normal distribution (b, c, h, w) 
         noise = default(noise, lambda: torch.randn_like(x_start))
-
-        # offset noise - https://www.crosslabs.org/blog/diffusion-with-offset-noise
-
-        offset_noise_strength = default(
-            offset_noise_strength, self.offset_noise_strength
-        )
-
-        if offset_noise_strength > 0.0:
-            offset_noise = torch.randn(x_start.shape[:2], device=self.device)
-            noise += offset_noise_strength * rearrange(offset_noise, "b c -> b c 1 1")
+        if noise is None:
+            noise = torch.randn_like(x_start)
 
         # noise sample
-
         x = self.q_sample(x_start=x_start, t=t, noise=noise)
 
         # if doing self-conditioning, 50% of the time, predict x_start from current set of times
@@ -478,20 +460,24 @@ class GaussianDiffusion(nn.Module):
         assert (
             h == img_size[0] and w == img_size[1]
         ), f"height and width of image must be {img_size}"
-        t = torch.randint(0, self.num_timesteps, (b,), device=device).long()
+
+        # Batch of random (uniformly sampled) timesteps [0, num_timesteps); shape (b,)
+        timestep = torch.randint(0, self.num_timesteps, (b,), device=device).long()
 
         img = self.normalize(img)
         return self.p_losses(img, t, *args, **kwargs)
     
     
-def extract(v, t, x_shape):
-    """Extract some coefficients at specified timesteps, then reshape to
+def extract_values(values, timestep, x_shape):
+    """Extract coefficients at specified timesteps, then reshape to
     [batch_size, 1, 1, 1, 1, ...] for broadcasting purposes.
     
     Args:
+        values: A tensor of values to extract from
+        timestep: 
         
     """
-    # torch.gather explanation: https://stackoverflow.com/questions/50999977/what-does-gather-do-in-pytorch-in-layman-terms
+    # torch.gather visual: https://stackoverflow.com/questions/50999977/what-does-gather-do-in-pytorch-in-layman-terms
     out = torch.gather(v, index=t, dim=0).float()
     
     return out.view([t.shape[0]] + [1] * (len(x_shape) - 1))
