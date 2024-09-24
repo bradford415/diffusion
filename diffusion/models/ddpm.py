@@ -386,7 +386,7 @@ class GaussianDiffusion(nn.Module):
     #     )
     
     def q_mean_variance(self, x_0, x_t, t):
-        ####################### START HERE, probably use the non lucidrains version################# 
+        # TODO: Comment this once I understand it better
         """
         Compute the mean and variance of the diffusion posterior
         q(x_{t-1} | x_t, x_0)
@@ -401,6 +401,13 @@ class GaussianDiffusion(nn.Module):
         return posterior_mean, posterior_log_var_clipped
 
     def p_losses(self, x_start, t, noise=None, offset_noise_strength=None):
+        ############# START HERE ################################
+        """Main function that adds noise to the image and denoises it through the unet model
+        
+        
+        Args:
+            x_start:
+        """
         b, c, h, w = x_start.shape
 
         noise = default(noise, lambda: torch.randn_like(x_start))
@@ -472,14 +479,13 @@ class GaussianDiffusion(nn.Module):
     
     
 def extract(v, t, x_shape):
-    """TODO: comment this much better once I understand it
-    Extract some coefficients at specified timesteps, then reshape to
+    """Extract some coefficients at specified timesteps, then reshape to
     [batch_size, 1, 1, 1, 1, ...] for broadcasting purposes.
     
     Args:
         
     """
-    # gather selects elements along an axis given by index; for example dim=0 is rows so the value
+    # torch.gather explanation: https://stackoverflow.com/questions/50999977/what-does-gather-do-in-pytorch-in-layman-terms
     out = torch.gather(v, index=t, dim=0).float()
     
     return out.view([t.shape[0]] + [1] * (len(x_shape) - 1))
