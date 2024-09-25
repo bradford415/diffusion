@@ -157,7 +157,6 @@ class GaussianDiffusion(nn.Module):
 
         # auto-normalization of data [0, 1] -> [-1, 1] - can turn off by setting it to be False
 
-        self.normalize = normalize_to_neg_one_to_one if auto_normalize else identity
         self.unnormalize = unnormalize_to_zero_to_one if auto_normalize else identity
 
     @property
@@ -369,15 +368,15 @@ class GaussianDiffusion(nn.Module):
         return torch.from_numpy(assign).to(dist.device)
 
     def q_sample(self, x_start, t, noise):
-        """
+        """Extract 
 
         Args:
             noise: Random gaussian noise (b, c, h, w)
         """
 
-        return (
-            extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
-            + extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
+        return ( ######### START HERE, understand what alphas really mean
+            extract_values(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
+            + extract_values(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
         )
     
     def q_mean_variance(self, x_0, x_t, t):
@@ -407,12 +406,11 @@ class GaussianDiffusion(nn.Module):
         b, c, h, w = x_start.shape
 
         # Sample random noise from a normal distribution (b, c, h, w) 
-        noise = default(noise, lambda: torch.randn_like(x_start))
         if noise is None:
             noise = torch.randn_like(x_start)
 
         # noise sample
-        x = self.q_sample(x_start=x_start, t=t, noise=noise)
+        x = self.q_sample(x_start=x_start, t=timestep, noise=noise)
 
         # if doing self-conditioning, 50% of the time, predict x_start from current set of times
         # and condition with unet with that
@@ -421,19 +419,19 @@ class GaussianDiffusion(nn.Module):
         x_self_cond = None
         if self.self_condition and random() < 0.5:
             with torch.no_grad():
-                x_self_cond = self.model_predictions(x, t).pred_x_start
+                x_self_cond = self.model_predictions(x, timestep).pred_x_start
                 x_self_cond.detach_()
 
         # predict and take gradient step
 
-        model_out = self.model(x, t, x_self_cond)
+        model_out = self.model(x, timestep, x_self_cond)
 
         if self.objective == "pred_noise":
             target = noise
         elif self.objective == "pred_x0":
             target = x_start
         elif self.objective == "pred_v":
-            v = self.predict_v(x_start, t, noise)
+            v = self.predict_v(x_start, timestep, noise)
             target = v
         else:
             raise ValueError(f"unknown objective {self.objective}")
@@ -441,10 +439,13 @@ class GaussianDiffusion(nn.Module):
         loss = F.mse_loss(model_out, target, reduction="none")
         loss = reduce(loss, "b ... -> b", "mean")
 
-        loss = loss * extract(self.loss_weight, t, loss.shape)
+        loss = loss * extract(self.loss_weight, timestep, loss.shape)
         return loss.mean()
 
     def forward(self, img, *args, **kwargs):
+        """Forward pass of DDPM; the main diffusion logic is perform in self.p_losses()
+        Args:
+        """
         (
             b,
             c,
@@ -464,8 +465,9 @@ class GaussianDiffusion(nn.Module):
         # Batch of random (uniformly sampled) timesteps [0, num_timesteps); shape (b,)
         timestep = torch.randint(0, self.num_timesteps, (b,), device=device).long()
 
-        img = self.normalize(img)
-        return self.p_losses(img, t, *args, **kwargs)
+        # Normalization is done in the dataset class so I don't think we need this
+        #img = self.normalize(img)
+        return self.p_losses(img, timestep, *args, **kwargs)
     
     
 def extract_values(values, timestep, x_shape):
@@ -475,12 +477,14 @@ def extract_values(values, timestep, x_shape):
     Args:
         values: A tensor of values to extract from
         timestep: 
-        
+
+    Returns:
+        A tensor of the extracted values; shape is (batch_size, 1, 1, 1, 1, ...) for broadcasting purposes
     """
     # torch.gather visual: https://stackoverflow.com/questions/50999977/what-does-gather-do-in-pytorch-in-layman-terms
-    out = torch.gather(v, index=t, dim=0).float()
+    out = torch.gather(values, index=timestep, dim=0).float()
     
-    return out.view([t.shape[0]] + [1] * (len(x_shape) - 1))
+    return out.view([timestep.shape[0]] + [1] * (len(x_shape) - 1))
 
 
 

@@ -15,7 +15,7 @@ reverse_transforms = T.Compose(
     [
         UnNormalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
         T.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW to HWC
-        T.Lambda(lambda t: t * 255.0), # [0,1] -> [0, 255]
+        T.Lambda(lambda t: t * 255.0),  # [0,1] -> [0, 255]
         T.Lambda(lambda t: t.numpy().astype(np.uint8)),
         T.toPILImage(),
     ]
