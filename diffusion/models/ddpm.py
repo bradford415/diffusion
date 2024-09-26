@@ -68,12 +68,21 @@ class GaussianDiffusion(nn.Module):
         else:
             raise ValueError(f"unknown beta schedule {beta_schedule}")
 
+
+        # Below we are essenttially defining the necessary alpha and beta variables of the 
+        # same shape so that we can sample all of the required variables for the forward 
+        # process at a specific time step
+        
         # Define the beta schedule; minumum and maximum noise to add
         betas = beta_schedule_fn(timesteps, **schedule_fn_kwargs)
 
-        # Define alphas; TODO: understand and comment this better
+        # Define alphas for the forward process; 
+        # these are defined in the ddpm paper in equation 4 and the paragraph above
+        # α¯_t = 1 - β and α¯_t = cumulative product of α at timestep t
         alphas = 1.0 - betas
         alphas_cumprod = torch.cumprod(alphas, dim=0)
+        
+        # Define α_{t-1}
         alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
 
         # Number of timesteps for diffusion; typically T = 1000
@@ -95,13 +104,16 @@ class GaussianDiffusion(nn.Module):
             name, val.to(torch.float32)
         )
 
+        # Store betas and alphas as part of the model
         register_buffer("betas", betas)
         register_buffer("alphas_cumprod", alphas_cumprod)
         register_buffer("alphas_cumprod_prev", alphas_cumprod_prev)
 
-        # calculations for diffusion q(x_t | x_{t-1}) and others
-
+        # Compute calculations for diffusion q(x_{1:T} | x_0) and store in the model; 
+        # equation 2 in ddpm paper
         register_buffer("sqrt_alphas_cumprod", torch.sqrt(alphas_cumprod))
+        
+        ################ START HERE, Understand the reset of these params ##########
         register_buffer(
             "sqrt_one_minus_alphas_cumprod", torch.sqrt(1.0 - alphas_cumprod)
         )
