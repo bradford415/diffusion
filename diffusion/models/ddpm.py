@@ -78,7 +78,7 @@ class GaussianDiffusion(nn.Module):
 
         # Define alphas for the forward process; 
         # these are defined in the ddpm paper in equation 4 and the paragraph above
-        # α¯_t = 1 - β and α¯_t = cumulative product of α at timestep t
+        # α_t = 1 - β and α¯_t = cumulative product of α at timestep t
         alphas = 1.0 - betas
         alphas_cumprod = torch.cumprod(alphas, dim=0)
         
@@ -109,14 +109,16 @@ class GaussianDiffusion(nn.Module):
         register_buffer("alphas_cumprod", alphas_cumprod)
         register_buffer("alphas_cumprod_prev", alphas_cumprod_prev)
 
-        # Compute calculations for diffusion q(x_{1:T} | x_0) and store in the model; 
-        # equation 2 in ddpm paper
+        # Compute sqrt(α¯) from equation 4
         register_buffer("sqrt_alphas_cumprod", torch.sqrt(alphas_cumprod))
         
-        ################ START HERE, Understand the reset of these params ##########
+        # Compute sqrt(1 - α¯) for sampling x_t (the noised image at timestep t from figure 2) 
+        # and parametizing the mean, mu
         register_buffer(
             "sqrt_one_minus_alphas_cumprod", torch.sqrt(1.0 - alphas_cumprod)
         )
+        
+        # START HERE, I don't think this log param is used for anything
         register_buffer("log_one_minus_alphas_cumprod", torch.log(1.0 - alphas_cumprod))
         register_buffer("sqrt_recip_alphas_cumprod", torch.sqrt(1.0 / alphas_cumprod))
         register_buffer(
