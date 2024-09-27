@@ -23,6 +23,9 @@ from diffusion.models.layers import (
 class Unet(nn.Module):
     """Unet model to be trained for diffusion during the reverse process
 
+    In DDPM the unet model is used to predict the noise, epsilon, added to an image
+    s
+
     This is the only training that is performed in diffusion.
     """
 
@@ -41,6 +44,10 @@ class Unet(nn.Module):
         flash_attn=False,
     ):
         """Initialize UNet model
+
+        The goal of unet in the ddpm paper is to predict the noise (epsilon) added to the image 
+        shown on line 4 in algorithm 1; eps ~ N(0, I) where N is the normal distribution and I 
+        is the variance based on the variance schedule (I'm pretty sure).
 
         Args:
             dim:
@@ -187,7 +194,7 @@ class Unet(nn.Module):
         # Final convolution to return to rgb channels
         self.final_conv = nn.Conv2d(init_dim, self.out_ch, 1)
 
-    def forward(self, x, time, x_self_cond=None):
+    def forward(self, x, time):
         """Forward pass of Unet
 
         Args:
