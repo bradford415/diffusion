@@ -9,8 +9,13 @@ from torch.nn import functional as F
 class GaussianDiffusion(nn.Module):
     """DDPM model which is responsible for noising images and denoising with unet 
     
-    q(x_{1:T} | x_{0}) is the forward diffusion process which adds noise according to a variance schedule β1, . . . , βT
-    p_θ(x_{0:T}) is the reverse process 
+    Forward process:
+        q(x_{1:T} | x_{0}) is the forward diffusion process which adds noise according to a variance 
+        schedule β1, . . . , βT; this allows noise to be added at a specific timestep instantly rather than
+        iteratively
+    
+    Reverse process:
+        p_θ(x_{0:T}) is the reverse process 
     
     """
     def __init__(
@@ -51,8 +56,8 @@ class GaussianDiffusion(nn.Module):
 
         self.image_size = image_size
 
+        # Can probably remove these objectives
         self.objective = objective
-
         assert objective in {
             "pred_noise",
             "pred_x0",
@@ -78,7 +83,7 @@ class GaussianDiffusion(nn.Module):
 
         # Define alphas for the forward process; 
         # these are defined in the ddpm paper in equation 4 and the paragraph above
-        # α_t = 1 - β and α¯_t = cumulative product of α at timestep t
+        # α_t = 1 - β and α¯_t = cumulative product of α at timestep t - NOTE: α¯ = alphas_cumprod 
         alphas = 1.0 - betas
         alphas_cumprod = torch.cumprod(alphas, dim=0)
         
@@ -119,24 +124,24 @@ class GaussianDiffusion(nn.Module):
         )
         
         # START HERE, I don't think this log param is used for anything
-        register_buffer("log_one_minus_alphas_cumprod", torch.log(1.0 - alphas_cumprod))
+        #register_buffer("log_one_minus_alphas_cumprod", torch.log(1.0 - alphas_cumprod))
+        
+        # Compute 1 / sqrt(α¯) equation 11
         register_buffer("sqrt_recip_alphas_cumprod", torch.sqrt(1.0 / alphas_cumprod))
+        
+        # I'm not sure what this is used for yet
         register_buffer(
             "sqrt_recipm1_alphas_cumprod", torch.sqrt(1.0 / alphas_cumprod - 1)
         )
 
-        # calculations for posterior q(x_{t-1} | x_t, x_0)
-
+        # Compute the posterior variance (equation 7) q(x_{t-1} | x_t, x_0)
+        # which is a parameter of the Normal distribution (equation 6)
         posterior_variance = (
             betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
         )
-
-        # above: equal to 1. / (1. / (1. - alpha_cumprod_tm1) + alpha_t / beta_t)
-
         register_buffer("posterior_variance", posterior_variance)
 
-        # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
-
+        # NOTE: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
         register_buffer(
             "posterior_log_variance_clipped",
             torch.log(posterior_variance.clamp(min=1e-20)),
@@ -156,12 +161,7 @@ class GaussianDiffusion(nn.Module):
 
         snr = alphas_cumprod / (1 - alphas_cumprod)
 
-        # https://arxiv.org/abs/2303.09556
-
-        maybe_clipped_snr = snr.clone()
-        if min_snr_loss_weight:
-            maybe_clipped_snr.clamp_(max=min_snr_gamma)
-
+        # TODO Understand this but I might be able to remove it
         if objective == "pred_noise":
             register_buffer("loss_weight", maybe_clipped_snr / snr)
         elif objective == "pred_x0":
