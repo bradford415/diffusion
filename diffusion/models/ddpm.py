@@ -446,16 +446,21 @@ class GaussianDiffusion(nn.Module):
             raise ValueError(f"unknown objective {self.objective}")
 
 
-        ################# START HERE #############################
+        # Calculate the element-wise squared error loss (pred - true)^2 (b, c, h, w)
         loss = F.mse_loss(model_out, target, reduction="none")
-        loss = reduce(loss, "b ... -> b", "mean")
+        
+        # Calculate the mean across c, h, & w (b, c*h*w); this allows us to weight each sample
+        # e.g., ddpm paper mentions that reducing the weight of samples at a low timestep could be effective
+        # many implementations weight these samples but for now we'll keep it simple and won't apply weighting
+        loss = loss.mean(axis=[1, 2, 3])
 
-        loss = loss * extract_values(self.loss_weight, timestep, loss.shape)
         return loss.mean()
 
-    def forward(self, img, *args, **kwargs):
+    def forward(self, image):
         """Forward pass of DDPM; the main diffusion logic is perform in self.p_losses()
+        
         Args:
+            image: Batch of original images without noise (b, c, h, w)
         """
         (
             b,
@@ -465,8 +470,8 @@ class GaussianDiffusion(nn.Module):
             device,
             img_size,
         ) = (
-            *img.shape,
-            img.device,
+            *image.shape,
+            image.device,
             self.image_size,
         )
         assert (
@@ -478,7 +483,7 @@ class GaussianDiffusion(nn.Module):
 
         # Normalization is done in the dataset class so I don't think we need this
         #img = self.normalize(img)
-        return self.p_losses(img, timestep, *args, **kwargs)
+        return self.p_losses(image, timestep)#*args, **kwargs)
     
     
 def extract_values(values: torch.Tensor, timestep: torch.Tensor, x_shape):
