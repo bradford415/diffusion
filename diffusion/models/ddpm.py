@@ -394,7 +394,7 @@ class GaussianDiffusion(nn.Module):
         )
     
     def q_mean_variance(self, x_0, x_t, t):
-        # TODO: Comment this once I understand it better
+        # TODO: might remove from different repo
         """
         Compute the mean and variance of the diffusion posterior
         q(x_{t-1} | x_t, x_0)
