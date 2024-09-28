@@ -1,4 +1,5 @@
 import math
+import random
 from typing import Tuple
 
 import torch
@@ -30,9 +31,6 @@ class GaussianDiffusion(nn.Module):
         schedule_fn_kwargs=dict(),
         ddim_sampling_eta=0.0,
         auto_normalize=True,
-        offset_noise_strength=0.0,  # https://www.crosslabs.org/blog/diffusion-with-offset-noise
-        min_snr_loss_weight=False,  # https://arxiv.org/abs/2303.09556
-        min_snr_gamma=5,
     ):
         """
         Args:
@@ -381,16 +379,23 @@ class GaussianDiffusion(nn.Module):
         _, assign = linear_sum_assignment(dist.cpu())
         return torch.from_numpy(assign).to(dist.device)
 
-    def q_sample(self, x_start, t, noise):
-        """Extract 
+    def q_sample(self, img_start, t, noise):
+        """Noise a batch of images according to the variance schedule (forward diffusion)
+
+        This function performs q(x_t | x_0) (eq. 4) which allows us to sample
+        from an arbitrary timestep; this means we don't have to iteratively add noise;
+        the authors of ddpm found it simpler and more beneficial to sample from a simplified
+        objective so the actual equation used for sampling is the reparametized eq. 4 explained
+        on page 3 and found in eq. 12 and algorithm 1
 
         Args:
+            img_start: Initial image (x) without noise
             noise: Random gaussian noise (b, c, h, w)
         """
 
-        return ( ######### START HERE, understand what alphas really mean
-            extract_values(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
-            + extract_values(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
+        return (
+            extract_values(self.sqrt_alphas_cumprod, t, img_start.shape) * img_start
+            + extract_values(self.sqrt_one_minus_alphas_cumprod, t, img_start.shape) * noise
         )
     
     def q_mean_variance(self, x_0, x_t, t):
@@ -408,52 +413,44 @@ class GaussianDiffusion(nn.Module):
             self.posterior_log_var_clipped, t, x_t.shape)
         return posterior_mean, posterior_log_var_clipped
 
-    def p_losses(self, x_start, timestep, noise=None):
-        ############# START HERE ################################
+    def p_losses(self, img_start, timestep, noise=None):
         """Main method that adds noise to the image and denoises it through the unet model
         
         Args:
-            x_start: 
-            timestep:
+            img_start: Initial input image to the model without any noise (b, c, h, w)  
+            timestep: Random timestep sampled from [0, num_timesteps); shape (b,)
             noise: TODO: remove this if it's not used anywhere
         """
-        b, c, h, w = x_start.shape
+        b, c, h, w = img_start.shape
 
         # Sample random noise from a normal distribution (b, c, h, w) 
         if noise is None:
-            noise = torch.randn_like(x_start)
+            noise = torch.randn_like(img_start)
 
-        # noise sample
-        x = self.q_sample(x_start=x_start, t=timestep, noise=noise)
+        # Noise a batch of images
+        noised_images = self.q_sample(x_start=img_start, t=timestep, noise=noise)
 
-        # if doing self-conditioning, 50% of the time, predict x_start from current set of times
-        # and condition with unet with that
-        # this technique will slow down training by 25%, but seems to lower FID significantly
+        # Predict the noise added to the image
+        model_out = self.model(noised_images, timestep)
 
-        x_self_cond = None
-        if self.self_condition and random() < 0.5:
-            with torch.no_grad():
-                x_self_cond = self.model_predictions(x, timestep).pred_x_start
-                x_self_cond.detach_()
-
-        # predict and take gradient step
-
-        model_out = self.model(x, timestep, x_self_cond)
-
+        # TODO: Incorporate different objectives but for now use the original
+        #       objective which is to predict the noise added to the image
         if self.objective == "pred_noise":
             target = noise
         elif self.objective == "pred_x0":
-            target = x_start
+            target = img_start
         elif self.objective == "pred_v":
-            v = self.predict_v(x_start, timestep, noise)
+            v = self.predict_v(img_start, timestep, noise)
             target = v
         else:
             raise ValueError(f"unknown objective {self.objective}")
 
+
+        ################# START HERE #############################
         loss = F.mse_loss(model_out, target, reduction="none")
         loss = reduce(loss, "b ... -> b", "mean")
 
-        loss = loss * extract(self.loss_weight, timestep, loss.shape)
+        loss = loss * extract_values(self.loss_weight, timestep, loss.shape)
         return loss.mean()
 
     def forward(self, img, *args, **kwargs):
@@ -484,13 +481,17 @@ class GaussianDiffusion(nn.Module):
         return self.p_losses(img, timestep, *args, **kwargs)
     
     
-def extract_values(values, timestep, x_shape):
-    """Extract coefficients at specified timesteps, then reshape to
+def extract_values(values: torch.Tensor, timestep: torch.Tensor, x_shape):
+    """Extract parameter values at specified timesteps, then reshape to
     [batch_size, 1, 1, 1, 1, ...] for broadcasting purposes.
+
+    This is mostly used to grab the parameters calculated in the GaussianDiffusion.__init__ 
+    that are used for the forward and reverse diffusion process  
     
     Args:
-        values: A tensor of values to extract from
-        timestep: 
+        values: A tensor of values to extract a specific timestep from (b, num_timesteps)
+                TODO: verify this shape
+        timestep: TODO verify this shape
 
     Returns:
         A tensor of the extracted values; shape is (batch_size, 1, 1, 1, 1, ...) for broadcasting purposes
@@ -499,7 +500,6 @@ def extract_values(values, timestep, x_shape):
     out = torch.gather(values, index=timestep, dim=0).float()
     
     return out.view([timestep.shape[0]] + [1] * (len(x_shape) - 1))
-
 
 
 # Variance schedulers to gradually add noise for the foward diffusion process;
