@@ -1,14 +1,13 @@
 # CIFAR 10/100 dataset copied from here: https://pytorch.org/vision/stable/_modules/torchvision/datasets/cifar.html#CIFAR10
 # Very slightly modified to keep consistent with the API I have been using
 from pathlib import Path
-from typing import Union, Tuple
+from typing import Tuple, Union
 
 import numpy as np
 from torchvision import transforms as T
 from torchvision.datasets import CIFAR10, CIFAR100
 
 from diffusion.data.transforms import UnNormalize
-
 
 # TODO: find a better place to put this (maybe return with make_cifa_transforms?)
 reverse_transforms = T.Compose(

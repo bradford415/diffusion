@@ -45,6 +45,8 @@ class Trainer:
         self.log_intervals = logging_intervals
         if not logging_intervals:
             self.log_intervals = {"train_steps_freq": 100}
+            
+        # TODO: Implement FID evaluator
 
     def train(
         self,
@@ -54,7 +56,6 @@ class Trainer:
         dataloader_val: data.DataLoader,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
-        class_names: List,
         start_epoch: int = 1,
         epochs: int = 100,
         ckpt_epochs: int = 10,

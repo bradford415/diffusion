@@ -11,13 +11,9 @@ import torch.nn.functional as F
 from torch import nn
 from torchvision import transforms as T
 
+from diffusion.models.layers import (Downsample, MultiheadedAttentionFM,
+                                     ResnetBlock, Upsample)
 from diffusion.models.positional import SinusoidalPosEmb
-from diffusion.models.layers import (
-    MultiheadedAttentionFM,
-    ResnetBlock,
-    Downsample,
-    Upsample,
-)
 
 
 class Unet(nn.Module):
@@ -45,8 +41,8 @@ class Unet(nn.Module):
     ):
         """Initialize UNet model
 
-        The goal of unet in the ddpm paper is to predict the noise (epsilon) added to the image 
-        shown on line 4 in algorithm 1; eps ~ N(0, I) where N is the normal distribution and I 
+        The goal of unet in the ddpm paper is to predict the noise (epsilon) added to the image
+        shown on line 4 in algorithm 1; eps ~ N(0, I) where N is the normal distribution and I
         is the variance based on the variance schedule (I'm pretty sure).
 
         Args:

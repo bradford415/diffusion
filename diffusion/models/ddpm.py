@@ -8,17 +8,18 @@ from torch.nn import functional as F
 
 
 class GaussianDiffusion(nn.Module):
-    """DDPM model which is responsible for noising images and denoising with unet 
-    
+    """DDPM model which is responsible for noising images and denoising with unet
+
     Forward process:
-        q(x_{1:T} | x_{0}) is the forward diffusion process which adds noise according to a variance 
+        q(x_{1:T} | x_{0}) is the forward diffusion process which adds noise according to a variance
         schedule β1, . . . , βT; this allows noise to be added at a specific timestep instantly rather than
         iteratively
-    
+
     Reverse process:
-        p_θ(x_{0:T}) is the reverse process 
-    
+        p_θ(x_{0:T}) is the reverse process
+
     """
+
     def __init__(
         self,
         model,
@@ -71,20 +72,19 @@ class GaussianDiffusion(nn.Module):
         else:
             raise ValueError(f"unknown beta schedule {beta_schedule}")
 
-
-        # Below we are essenttially defining the necessary alpha and beta variables of the 
-        # same shape so that we can sample all of the required variables for the forward 
+        # Below we are essenttially defining the necessary alpha and beta variables of the
+        # same shape so that we can sample all of the required variables for the forward
         # process at a specific time step
-        
+
         # Define the beta schedule; minumum and maximum noise to add
         betas = beta_schedule_fn(timesteps, **schedule_fn_kwargs)
 
-        # Define alphas for the forward process; 
+        # Define alphas for the forward process;
         # these are defined in the ddpm paper in equation 4 and the paragraph above
-        # α_t = 1 - β and α¯_t = cumulative product of α at timestep t - NOTE: α¯ = alphas_cumprod 
+        # α_t = 1 - β and α¯_t = cumulative product of α at timestep t - NOTE: α¯ = alphas_cumprod
         alphas = 1.0 - betas
         alphas_cumprod = torch.cumprod(alphas, dim=0)
-        
+
         # Define α_{t-1}
         alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
 
@@ -114,19 +114,19 @@ class GaussianDiffusion(nn.Module):
 
         # Compute sqrt(α¯) from equation 4
         register_buffer("sqrt_alphas_cumprod", torch.sqrt(alphas_cumprod))
-        
-        # Compute sqrt(1 - α¯) for sampling x_t (the noised image at timestep t from figure 2) 
+
+        # Compute sqrt(1 - α¯) for sampling x_t (the noised image at timestep t from figure 2)
         # and parametizing the mean, mu
         register_buffer(
             "sqrt_one_minus_alphas_cumprod", torch.sqrt(1.0 - alphas_cumprod)
         )
-        
+
         # START HERE, I don't think this log param is used for anything
-        #register_buffer("log_one_minus_alphas_cumprod", torch.log(1.0 - alphas_cumprod))
-        
+        # register_buffer("log_one_minus_alphas_cumprod", torch.log(1.0 - alphas_cumprod))
+
         # Compute 1 / sqrt(α¯) equation 11
         register_buffer("sqrt_recip_alphas_cumprod", torch.sqrt(1.0 / alphas_cumprod))
-        
+
         # I'm not sure what this is used for yet
         register_buffer(
             "sqrt_recipm1_alphas_cumprod", torch.sqrt(1.0 / alphas_cumprod - 1)
@@ -152,7 +152,6 @@ class GaussianDiffusion(nn.Module):
             "posterior_mean_coef2",
             (1.0 - alphas_cumprod_prev) * torch.sqrt(alphas) / (1.0 - alphas_cumprod),
         )
-
 
         # derive loss weight
         # snr - signal noise ratio
@@ -395,9 +394,10 @@ class GaussianDiffusion(nn.Module):
 
         return (
             extract_values(self.sqrt_alphas_cumprod, t, img_start.shape) * img_start
-            + extract_values(self.sqrt_one_minus_alphas_cumprod, t, img_start.shape) * noise
+            + extract_values(self.sqrt_one_minus_alphas_cumprod, t, img_start.shape)
+            * noise
         )
-    
+
     def q_mean_variance(self, x_0, x_t, t):
         # TODO: might remove from different repo
         """
@@ -406,24 +406,25 @@ class GaussianDiffusion(nn.Module):
         """
         assert x_0.shape == x_t.shape
         posterior_mean = (
-            extract(self.posterior_mean_coef1, t, x_t.shape) * x_0 +
-            extract(self.posterior_mean_coef2, t, x_t.shape) * x_t
+            extract(self.posterior_mean_coef1, t, x_t.shape) * x_0
+            + extract(self.posterior_mean_coef2, t, x_t.shape) * x_t
         )
         posterior_log_var_clipped = extract(
-            self.posterior_log_var_clipped, t, x_t.shape)
+            self.posterior_log_var_clipped, t, x_t.shape
+        )
         return posterior_mean, posterior_log_var_clipped
 
     def p_losses(self, img_start, timestep, noise=None):
         """Main method that adds noise to the image and denoises it through the unet model
-        
+
         Args:
-            img_start: Initial input image to the model without any noise (b, c, h, w)  
+            img_start: Initial input image to the model without any noise (b, c, h, w)
             timestep: Random timestep sampled from [0, num_timesteps); shape (b,)
             noise: TODO: remove this if it's not used anywhere
         """
         b, c, h, w = img_start.shape
 
-        # Sample random noise from a normal distribution (b, c, h, w) 
+        # Sample random noise from a normal distribution (b, c, h, w)
         if noise is None:
             noise = torch.randn_like(img_start)
 
@@ -445,10 +446,9 @@ class GaussianDiffusion(nn.Module):
         else:
             raise ValueError(f"unknown objective {self.objective}")
 
-
         # Calculate the element-wise squared error loss (pred - true)^2 (b, c, h, w)
         loss = F.mse_loss(model_out, target, reduction="none")
-        
+
         # Calculate the mean across c, h, & w (b, c*h*w); this allows us to weight each sample
         # e.g., ddpm paper mentions that reducing the weight of samples at a low timestep could be effective
         # many implementations weight these samples but for now we'll keep it simple and won't apply weighting
@@ -458,7 +458,7 @@ class GaussianDiffusion(nn.Module):
 
     def forward(self, image):
         """Forward pass of DDPM; the main diffusion logic is perform in self.p_losses()
-        
+
         Args:
             image: Batch of original images without noise (b, c, h, w)
         """
@@ -467,13 +467,9 @@ class GaussianDiffusion(nn.Module):
             c,
             h,
             w,
-            device,
-            img_size,
-        ) = (
-            *image.shape,
-            image.device,
-            self.image_size,
-        )
+        ) = image.shape
+        device = image.device
+        img_size = self.image_size
         assert (
             h == img_size[0] and w == img_size[1]
         ), f"height and width of image must be {img_size}"
@@ -482,17 +478,18 @@ class GaussianDiffusion(nn.Module):
         timestep = torch.randint(0, self.num_timesteps, (b,), device=device).long()
 
         # Normalization is done in the dataset class so I don't think we need this
-        #img = self.normalize(img)
-        return self.p_losses(image, timestep)#*args, **kwargs)
-    
-    
+        # img = self.normalize(img)
+        ################ START HRE###########
+        return self.p_losses(image, timestep)  # *args, **kwargs)
+
+
 def extract_values(values: torch.Tensor, timestep: torch.Tensor, x_shape):
     """Extract parameter values at specified timesteps, then reshape to
     [batch_size, 1, 1, 1, 1, ...] for broadcasting purposes.
 
-    This is mostly used to grab the parameters calculated in the GaussianDiffusion.__init__ 
-    that are used for the forward and reverse diffusion process  
-    
+    This is mostly used to grab the parameters calculated in the GaussianDiffusion.__init__
+    that are used for the forward and reverse diffusion process
+
     Args:
         values: A tensor of values to extract a specific timestep from (b, num_timesteps)
                 TODO: verify this shape
@@ -503,7 +500,7 @@ def extract_values(values: torch.Tensor, timestep: torch.Tensor, x_shape):
     """
     # torch.gather visual: https://stackoverflow.com/questions/50999977/what-does-gather-do-in-pytorch-in-layman-terms
     out = torch.gather(values, index=timestep, dim=0).float()
-    
+
     return out.view([timestep.shape[0]] + [1] * (len(x_shape) - 1))
 
 

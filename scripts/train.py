@@ -2,7 +2,7 @@ import datetime
 import logging
 import tracemalloc
 from pathlib import Path
-from typing import Any, Dict, Iterable, Tuple, Optional
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 import torch
 import yaml
@@ -10,10 +10,10 @@ from fire import Fire
 from torch import nn
 from torch.utils.data import DataLoader
 
+from diffusion.data.cifar import build_cifar
+from diffusion.models import Unet
 from diffusion.trainer import Trainer
 from diffusion.utils import reproduce
-from diffusion.models import Unet
-from diffusion.data.cifar import build_cifar
 
 model_map: Dict[str, Any] = {"unet": Unet}
 
@@ -104,7 +104,10 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         log.info("Using CPU")
 
     # Create train and val dataset; cifar does not have a val set so we can use test for this
-    common_dataset_kwargs = {"root": base_config["dataset"]["root"], "debug_mode": base_config["debug_mode"]}
+    common_dataset_kwargs = {
+        "root": base_config["dataset"]["root"],
+        "debug_mode": base_config["debug_mode"],
+    }
     dataset_name = base_config["dataset"]["name"]
     if dataset_name == "cifar10":
         dataset_train = build_cifar("cifar10", "train", **common_dataset_kwargs)
@@ -147,7 +150,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     learning_params = base_config[learning_config]
 
     # Initialize training objects
-    optimizer  = _init_training_objects(
+    optimizer = _init_training_objects(
         model_params=model.parameters(),
         optimizer=learning_params["optimizer"],
         scheduler=learning_params["lr_scheduler"],
@@ -171,10 +174,10 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     # Build trainer args used for the training
     trainer_args = {
         "model": model,
-        #"criterion": criterion,
+        # "criterion": criterion,
         "dataloader_train": dataloader_train,
         "dataloader_val": dataloader_val,
-        #"optimizer": optimizer,
+        # "optimizer": optimizer,
         **train_args["epochs"],
     }
     trainer.train(**trainer_args)
