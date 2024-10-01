@@ -50,10 +50,9 @@ class Trainer:
 
     def train(
         self,
-        model: nn.Module,
+        diffusion_model: nn.Module,
         criterion: nn.Module,
         dataloader_train: data.DataLoader,
-        dataloader_val: data.DataLoader,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
         start_epoch: int = 1,
@@ -77,6 +76,10 @@ class Trainer:
             epochs: The epoch to end training on; unless starting from a check point, this will be the number of epochs to train for
             ckpt_every: Save the model after n epochs
         """
+        # Infinitely cycle through the dataloader to train by steps
+        # i.e., once all the samples have been sampled, it will start over again
+        dataloader_train = self._cylce(dataloader_train)
+        
         log.info("\nTraining started\n")
         total_train_start_time = time.time()
 
@@ -85,21 +88,16 @@ class Trainer:
         self._visualize_batch(dataloader_val, "val", class_names)
 
         # Starting the epoch at 1 makes calculations more intuitive
-        for epoch in range(start_epoch, epochs + 1):
-            ## TODO: Implement tensorboard as shown here: https://github.com/eriklindernoren/PyTorch-YOLOv3/blob/master/pytorchyolo/utils/logger.py#L6
-
-            # Track the time it takes for one epoch (train and val)
-            one_epoch_start_time = time.time()
+        for step in range(start_step, train_steps + 1):
+            diffusion_model.train() # TODO: I think this will also set the unet model to train mode but I should verify
 
             # Train one epoch
-            self._train_one_epoch(
-                model,
+            self._train_one_step(
+                diffusion_model,
                 criterion,
                 dataloader_train,
                 optimizer,
                 scheduler,
-                epoch,
-                class_names,
             )
 
             # Evaluate the model on the validation set
@@ -134,72 +132,71 @@ class Trainer:
             total_time_str,
         )
 
-    def _train_one_epoch(
+    def _train_one_step(
         self,
-        model: nn.Module,
+        diffusion_model: nn.Module,
         criterion: nn.Module,
         dataloader_train: Iterable,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
-        epoch: int,
-        class_names: List[str],
     ):
-        """Train one epoch
+        """Train one step (one batch of samples)
 
         Args:
             model: Model to train
             criterion: Loss function
             dataloader_train: Dataloader for the training set
             optimizer: Optimizer to update the models weights
-            scheduler: Learning rate scheduler to update the learning rate
-            epoch: Current epoch; used for logging purposes
         """
-        for steps, (samples, targets) in enumerate(dataloader_train):
-            samples = samples.to(self.device)
-            targets = [
-                {key: value.to(self.device) for key, value in t.items()}
-                for t in targets
-            ]
+        samples = next(dataloader_train).to(self.device)
 
-            optimizer.zero_grad()
+        optimizer.zero_grad()
 
-            # len(bbox_predictions) = 3; bbox_predictions[i] (B, (5+n_class)*n_bboxes, out_w, out_h)
-            bbox_predictions = model(samples)
+        # Forward pass through diffusion model; noises and denoises the image; diffusion_model contains the
+        # the unet model for denoising
+        loss = diffusion_model(samples)
+        
+        ############## START HERE; clip by grad norm and comment it; 
+        ############# basically if the l2 norm of the gradients is greater than the threshold, then divide
+        ############ the gradients by the magnitude to create a unit vector; the vector is all the gradients
+        ############ basically this makes it so the magnitude of the gradients is 1
 
-            final_loss, loss_xy, loss_wh, loss_obj, loss_cls, lossl2 = criterion(
-                bbox_predictions, targets
+        final_loss, loss_xy, loss_wh, loss_obj, loss_cls, lossl2 = criterion(
+            bbox_predictions, targets
+        )
+
+        loss.backward()
+
+        loss_components = misc.to_cpu(
+            torch.stack([loss_xy, loss_wh, loss_obj, loss_cls, lossl2])
+        )
+
+        # Calculate gradients and updates weights
+        final_loss.backward()
+        optimizer.step()
+
+        # Calling scheduler step increments a counter which is passed to the lambda function;
+        # if .step() is called after every batch, then it will pass the current step;
+        # if .step() is called after every epoch, then it will pass the epoch number;
+        # this counter is persistent so every epoch it will continue where it left off i.e., it will not reset to 0
+        scheduler.step()
+
+        if (steps + 1) % 100 == 0:
+            log.info(
+                "Current learning_rate: %s\n",
+                optimizer.state_dict()["param_groups"][0]["lr"],
             )
 
-            loss_components = misc.to_cpu(
-                torch.stack([loss_xy, loss_wh, loss_obj, loss_cls, lossl2])
+        if (steps + 1) % self.log_intervals["train_steps_freq"] == 0:
+            log.info(
+                "epoch: %-10d iter: %d/%-10d loss: %-10.4f",
+                epoch,
+                steps + 1,
+                len(dataloader_train),
+                final_loss.item(),
             )
 
-            # Calculate gradients and updates weights
-            final_loss.backward()
-            optimizer.step()
-
-            # Calling scheduler step increments a counter which is passed to the lambda function;
-            # if .step() is called after every batch, then it will pass the current step;
-            # if .step() is called after every epoch, then it will pass the epoch number;
-            # this counter is persistent so every epoch it will continue where it left off i.e., it will not reset to 0
-            scheduler.step()
-
-            if (steps + 1) % 100 == 0:
-                log.info(
-                    "Current learning_rate: %s\n",
-                    optimizer.state_dict()["param_groups"][0]["lr"],
-                )
-
-            if (steps + 1) % self.log_intervals["train_steps_freq"] == 0:
-                log.info(
-                    "epoch: %-10d iter: %d/%-10d loss: %-10.4f",
-                    epoch,
-                    steps + 1,
-                    len(dataloader_train),
-                    final_loss.item(),
-                )
-
-                log.info("cpu utilization: %s\n", psutil.virtual_memory().percent)
+            log.info("cpu utilization: %s\n", psutil.virtual_memory().percent)
 
     @torch.no_grad()
     def _evaluate(
@@ -271,6 +268,23 @@ class Trainer:
         print_eval_stats(metrics_output, class_names, verbose=True)
 
         return metrics_output
+    
+    def _cylce(dataloader: data.DataLoader):
+        """This function infinitely cycles through a torch dataloader. This is useful
+        when you want to train by steps rather than epochs.
+        
+        It functions exactly the same as training by epochs; i.e., the dataloader
+        will still sample all of the samples in the dataset first and once it reaches the end of
+        the dataset it will restart; if shuffle is specified in the dataloader, the shuffling will
+        still be used randomly to mix samples in batches just like training by epochs
+        
+        Args:
+         dataloader: A torch dataloader
+        """
+        while True:
+            for data in dataloader:
+                yield data
+        
 
     def _save_model(
         self, model, optimizer, lr_scheduler, current_epoch, ckpt_every, save_path
