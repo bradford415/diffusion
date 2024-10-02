@@ -1,8 +1,7 @@
-import cProfile
+import copy
 import datetime
 import logging
 import time
-import tracemalloc
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
@@ -23,6 +22,8 @@ class Trainer:
         self,
         output_path: str,
         device: torch.device = torch.device("cpu"),
+        max_grad_norm: float = 1.0,
+        eval_intervals: int = 40,
         logging_intervals: Dict = {},
     ):
         """Constructor for the Trainer class
@@ -30,6 +31,8 @@ class Trainer:
         Args:
             output_path: Path to save the train outputs
             use_cuda: Whether to use the GPU
+            eval_intervals: Number of steps to evaluate the model after during training
+            
         """
         ## TODO: PROBALBY REMOVE THESE Initialize training objects
         # self.optimizer = optimizer_map[optimizer]
@@ -42,10 +45,11 @@ class Trainer:
             "output_dir": Path(output_path),
         }
 
+        # Logging params
+        self.eval_intervals = eval_intervals
         self.log_intervals = logging_intervals
-        if not logging_intervals:
-            self.log_intervals = {"train_steps_freq": 100}
             
+        self.max_grad_norm = max_grad_norm
         # TODO: Implement FID evaluator
 
     def train(
@@ -76,6 +80,8 @@ class Trainer:
             epochs: The epoch to end training on; unless starting from a check point, this will be the number of epochs to train for
             ckpt_every: Save the model after n epochs
         """
+        ema_model = copy.deepcopy(diffusion_model)
+        
         # Infinitely cycle through the dataloader to train by steps
         # i.e., once all the samples have been sampled, it will start over again
         dataloader_train = self._cylce(dataloader_train)
@@ -99,6 +105,9 @@ class Trainer:
                 optimizer,
                 scheduler,
             )
+            
+            if step % self.eval_interval == 0:
+                self.ema.ema_model.eval()
 
             # Evaluate the model on the validation set
             log.info("\nEvaluating on validation set — epoch %d", epoch)
@@ -138,7 +147,6 @@ class Trainer:
         criterion: nn.Module,
         dataloader_train: Iterable,
         optimizer: torch.optim.Optimizer,
-        scheduler: torch.optim.lr_scheduler,
     ):
         """Train one step (one batch of samples)
 
@@ -150,36 +158,28 @@ class Trainer:
         """
         samples = next(dataloader_train).to(self.device)
 
-        optimizer.zero_grad()
 
         # Forward pass through diffusion model; noises and denoises the image; diffusion_model contains the
         # the unet model for denoising
         loss = diffusion_model(samples)
         
-        ############## START HERE; clip by grad norm and comment it; 
-        ############# basically if the l2 norm of the gradients is greater than the threshold, then divide
-        ############ the gradients by the magnitude to create a unit vector; the vector is all the gradients
-        ############ basically this makes it so the magnitude of the gradients is 1
-
-        final_loss, loss_xy, loss_wh, loss_obj, loss_cls, lossl2 = criterion(
-            bbox_predictions, targets
-        )
-
         loss.backward()
 
-        loss_components = misc.to_cpu(
-            torch.stack([loss_xy, loss_wh, loss_obj, loss_cls, lossl2])
-        )
+        # Clips the magnitude (l2) of the gradients to max_norm if the magnitude is greater than this value;
+        # this works by calculating the unit vector of the gradients (grad_vec / ||grad_vec||) and if this
+        # is greater than max_norm, the gradients are clipped by dividing by ||grad_vec|| which will create
+        # a unit vector; a unit vector has a l2 magnitude of 1 so if we take the l2 of all the gradients after
+        # clipping the magnitude should be 1; if max_norm is not 1, a unit vector is created and then multiplied 
+        # by this max_norm value; this works because the gradients are now a unit vector so multiplying by
+        # this constant will the scale the clipped gradients linearly; the gradients of the models parameters 
+        # are clipped (i.e., parameter.grad) not the parameters itself, therefore, clip_grad_norm_
+        # should be placed after loss.backward but before optimizer.step
+        nn.utils.clip_grad_norm_(diffusion_model.parameters(), max_norm=self.max_grad_norm)
 
-        # Calculate gradients and updates weights
-        final_loss.backward()
         optimizer.step()
-
-        # Calling scheduler step increments a counter which is passed to the lambda function;
-        # if .step() is called after every batch, then it will pass the current step;
-        # if .step() is called after every epoch, then it will pass the epoch number;
-        # this counter is persistent so every epoch it will continue where it left off i.e., it will not reset to 0
-        scheduler.step()
+        optimizer.zero_grad()
+        
+        ############# START HERE!!!! look over ema stuff too ###############
 
         if (steps + 1) % 100 == 0:
             log.info(
@@ -268,6 +268,23 @@ class Trainer:
         print_eval_stats(metrics_output, class_names, verbose=True)
 
         return metrics_output
+    
+    def _calculate_ema(source_model: nn.Module, target_model: nn.Module, decay):
+        """Calculate the exponential moving average (ema) from a source model's weights
+        
+        TODO: write about the benefit here
+        
+        Args:
+            source_model: the model to calcuate the ema on
+            target_model: the model to store the ema of the weights
+            decay: the ema decay TODO clarify this better
+        """
+        source_dict = source_model.state_dict()
+        target_dict = target_model.state_dict()
+        for key in source_dict.keys():
+            target_dict[key].data.copy_(
+                target_dict[key].data * decay +
+                source_dict[key].data * (1 - decay))
     
     def _cylce(dataloader: data.DataLoader):
         """This function infinitely cycles through a torch dataloader. This is useful
