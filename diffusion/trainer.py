@@ -23,7 +23,9 @@ class Trainer:
         output_path: str,
         device: torch.device = torch.device("cpu"),
         max_grad_norm: float = 1.0,
+        ema_decay: float = 0.9999,
         eval_intervals: int = 40,
+        num_eval_samples: int = 25,
         logging_intervals: Dict = {},
     ):
         """Constructor for the Trainer class
@@ -32,6 +34,7 @@ class Trainer:
             output_path: Path to save the train outputs
             use_cuda: Whether to use the GPU
             eval_intervals: Number of steps to evaluate the model after during training
+            num_eval_samples: number of samples to evaluate; must be a perfect square
             
         """
         ## TODO: PROBALBY REMOVE THESE Initialize training objects
@@ -106,14 +109,18 @@ class Trainer:
                 scheduler,
             )
             
+            # Update the EMA model's weights
+            self._calculate_ema(diffusion_model, ema_model)
+            
+            # Evaluate the diffusion model at a specified interval
             if step % self.eval_interval == 0:
-                self.ema.ema_model.eval()
+                
 
-            # Evaluate the model on the validation set
-            log.info("\nEvaluating on validation set — epoch %d", epoch)
-            metrics_output = self._evaluate(
-                model, criterion, dataloader_val, class_names=class_names
-            )
+                # Evaluate the model on the validation set
+                log.info("\nEvaluating — step %d", step)
+                metrics_output = self._evaluate(
+                    model, criterion, dataloader_val, class_names=class_names
+                )
 
             # Save the model every ckpt_epochs
             if (epoch) % ckpt_epochs == 0:
@@ -198,13 +205,10 @@ class Trainer:
 
             log.info("cpu utilization: %s\n", psutil.virtual_memory().percent)
 
-    @torch.no_grad()
+    @torch.inference_mode
     def _evaluate(
         self,
-        model: nn.Module,
-        criterion: nn.Module,
-        dataloader_val: Iterable,
-        class_names: List,
+        ema_model: nn.Module,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """A single forward pass to evluate the val set after training an epoch
 
@@ -219,8 +223,11 @@ class Trainer:
         Returns:
             A Tuple of the (prec, rec, ap, f1, and class) per class
         """
-
-        model.eval()
+        # Eval is only performed with the ema model 
+        ema_model.eval()
+        
+        ##################### START HJEREREREREE
+        ema_model.sample()
 
         labels = []
         sample_metrics = []  # List of tuples (true positives, cls_confs, cls_labels)
@@ -271,6 +278,7 @@ class Trainer:
     
     def _calculate_ema(source_model: nn.Module, target_model: nn.Module, decay):
         """Calculate the exponential moving average (ema) from a source model's weights
+        and the current target_model's weights; the updated weights are stored in target_model
         
         TODO: write about the benefit here
         
