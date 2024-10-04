@@ -53,6 +53,8 @@ class Trainer:
         self.log_intervals = logging_intervals
             
         self.max_grad_norm = max_grad_norm
+        
+        self.num_eval_samples = num_eval_samples
         # TODO: Implement FID evaluator
 
     def train(
@@ -209,6 +211,7 @@ class Trainer:
     def _evaluate(
         self,
         ema_model: nn.Module,
+        batch_size: int,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """A single forward pass to evluate the val set after training an epoch
 
@@ -227,9 +230,15 @@ class Trainer:
         ema_model.eval()
         
         ##################### START HJEREREREREE
-        ema_model.sample()
+        
+        
+        eval_images = []
+        eval_batch_sizes = self._num_samples_to_batches(self.num_eval_samples, batch_size)
+        for batch_size in eval_batch_sizes:
+            ema_model.eval_sample(batch_size=batch_size)
 
         labels = []
+        self.num_
         sample_metrics = []  # List of tuples (true positives, cls_confs, cls_labels)
         for steps, (samples, targets) in enumerate(dataloader_val):
             samples = samples.to(self.device)
@@ -293,6 +302,24 @@ class Trainer:
             target_dict[key].data.copy_(
                 target_dict[key].data * decay +
                 source_dict[key].data * (1 - decay))
+            
+    def _num_samples_to_batches(num_samples: int, batch_size: int):
+        """Create a list of batch sizes and the remaining batch size at the last index;
+        this is useful to pass the number of eval samples by batch
+        
+        Example: num_samples = 25 and batch_size = 16 -> [16, 9]
+        
+        Args:
+            num_samples: number of samples to pass into the model; typically these are 
+                         evaluation samples that will be generated
+            batch_size: batch size to split the samples into
+        """
+        groups = num_samples // batch_size
+        remainder = num_samples % batch_size
+        batch_arr = [batch_size] * groups
+        if remainder > 0:
+            batch_arr.append(remainder)
+        return batch_arr
     
     def _cylce(dataloader: data.DataLoader):
         """This function infinitely cycles through a torch dataloader. This is useful

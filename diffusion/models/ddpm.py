@@ -7,16 +7,20 @@ from torch import nn
 from torch.nn import functional as F
 
 
-class GaussianDiffusion(nn.Module):
+class DDPM(nn.Module):
     """DDPM model which is responsible for noising images and denoising with unet
-
-    Forward process:
-        q(x_{1:T} | x_{0}) is the forward diffusion process which adds noise according to a variance
-        schedule β1, . . . , βT; this allows noise to be added at a specific timestep instantly rather than
-        iteratively
-
-    Reverse process:
-        p_θ(x_{0:T}) is the reverse process
+    
+    DDPM works in 3 steps:
+        1. Forward process (algorithm 1):
+            q(x_{1:T} | x_{0}) is the forward diffusion process which adds noise according to a variance
+            schedule β1, . . . , βT; this allows noise to be added at a specific timestep instantly rather 
+            than iteratively
+        2. Reverse process (algorithm 1):
+            p_θ(x_{0:T}) is the reverse process TODO flesh this out
+        3. Sampling (algorithm 2): This is basically the evaluation after training where we generate new images;
+           the model takes random noise and applies the learned reserse steps to iteratively
+           refine the noise into a coherent sample
+           
 
     """
 
@@ -262,8 +266,14 @@ class GaussianDiffusion(nn.Module):
 
     @torch.inference_mode()
     def p_sample_loop(self, shape, return_all_timesteps=False):
-        batch, device = shape[0], self.device
+        """TODO
+        
+        Args: 
+        shape: shape to randomly sample noise of (b, c, h, w)
 
+        """
+        batch, device = shape[0], self.device
+            ####################################### START HERE ####################
         img = torch.randn(shape, device=device)
         imgs = [img]
 
@@ -339,14 +349,19 @@ class GaussianDiffusion(nn.Module):
         return ret
 
     @torch.inference_mode()
-    def sample(self, batch_size=16, return_all_timesteps=False):
+    def sample_generation(self, batch_size=16, return_all_timesteps=False):
+        """Generate images from noise samples
+        
+        This is basically the evaluation/inference function but I think diffusion models
+        do not really use the term evaluation.
+        
+        Args:
+            batch_size: 
+        """
         (h, w), channels = self.image_size, self.channels
-        sample_fn = (
-            self.p_sample_loop if not self.is_ddim_sampling else self.ddim_sample
-        )
-        return sample_fn(
-            (batch_size, channels, h, w), return_all_timesteps=return_all_timesteps
-        )
+        self.p_sample_loop((batch_size, channels, h, w), return_all_timesteps=return_all_timesteps)
+        
+        return None
 
     @torch.inference_mode()
     def interpolate(self, x1, x2, t=None, lam=0.5):
