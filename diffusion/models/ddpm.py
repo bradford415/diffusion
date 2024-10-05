@@ -5,22 +5,23 @@ from typing import Tuple
 import torch
 from torch import nn
 from torch.nn import functional as F
+from tqdm import tqdm
 
 
 class DDPM(nn.Module):
     """DDPM model which is responsible for noising images and denoising with unet
-    
+
     DDPM works in 3 steps:
         1. Forward process (algorithm 1):
             q(x_{1:T} | x_{0}) is the forward diffusion process which adds noise according to a variance
-            schedule β1, . . . , βT; this allows noise to be added at a specific timestep instantly rather 
+            schedule β1, . . . , βT; this allows noise to be added at a specific timestep instantly rather
             than iteratively
         2. Reverse process (algorithm 1):
             p_θ(x_{0:T}) is the reverse process TODO flesh this out
         3. Sampling (algorithm 2): This is basically the evaluation after training where we generate new images;
            the model takes random noise and applies the learned reserse steps to iteratively
            refine the noise into a coherent sample
-           
+
 
     """
 
@@ -215,6 +216,14 @@ class DDPM(nn.Module):
     def model_predictions(
         self, x, t, x_self_cond=None, clip_x_start=False, rederive_pred_noise=False
     ):
+        """Predict 1 of 3 objectives (noise, original_image, or v) depending how the model was trained;
+        supposedly predicting v works the best but ddpm predicts the noise so for now we'll use noise
+        as the objective
+        
+        ############### START HERE
+        Args:
+
+        """
         model_output = self.model(x, t, x_self_cond)
         maybe_clip = (
             partial(torch.clamp, min=-1.0, max=1.0) if clip_x_start else identity
@@ -241,8 +250,18 @@ class DDPM(nn.Module):
 
         return ModelPrediction(pred_noise, x_start)
 
-    def p_mean_variance(self, x, t, x_self_cond=None, clip_denoised=True):
-        preds = self.model_predictions(x, t, x_self_cond)
+    def p_mean_variance(self, noise, timestep, clip_denoised=True):
+        """TODO
+        
+        Args:
+            noise: random noise from normal distribution (b, c, h, w)
+            timestep: a single denoising timestep (b,); unlike training this will
+                      be the same value for the entire batch
+            clip_denoised
+
+        """
+        # predict the models training objective; for ddpm paper this is the noise
+        preds = self.model_predictions(noise, timestep)
         x_start = preds.pred_x_start
 
         if clip_denoised:
@@ -254,39 +273,50 @@ class DDPM(nn.Module):
         return model_mean, posterior_variance, posterior_log_variance, x_start
 
     @torch.inference_mode()
-    def p_sample(self, x, t: int, x_self_cond=None):
-        b, *_, device = *x.shape, self.device
-        batched_times = torch.full((b,), t, device=device, dtype=torch.long)
+    def p_sample(self, noise, timestep: int, x_self_cond=None):
+        """"
+        
+        Args:
+            noise: a batch of pure noise from a normal distribution (b, c, h, w)
+            timestep: the current denoising timestep (1,); unlike training this will just
+                      be a scalar
+        """
+        b, c, h, w = noise.shape, 
+        
+        # (b,)
+        batched_times = torch.full((b,), timestep, device=self.device, dtype=torch.long)
+        
         model_mean, _, model_log_variance, x_start = self.p_mean_variance(
-            x=x, t=batched_times, x_self_cond=x_self_cond, clip_denoised=True
+            noise=noise, timestep=batched_times, clip_denoised=True
         )
-        noise = torch.randn_like(x) if t > 0 else 0.0  # no noise if t == 0
+        noise = torch.randn_like(noise) if timestep > 0 else 0.0  # no noise if t == 0
         pred_img = model_mean + (0.5 * model_log_variance).exp() * noise
         return pred_img, x_start
 
     @torch.inference_mode()
     def p_sample_loop(self, shape, return_all_timesteps=False):
         """TODO
-        
-        Args: 
+
+        Args:
         shape: shape to randomly sample noise of (b, c, h, w)
 
         """
         batch, device = shape[0], self.device
-            ####################################### START HERE ####################
-        img = torch.randn(shape, device=device)
-        imgs = [img]
+        
+       # Create batch of noise from a normal distribution (b, c, h, w) 
+        noise = torch.randn(shape, device=device)
+        images = [noise]
 
         x_start = None
 
-        for t in tqdm(
+        # Loop from (num_timesteps, 0] 
+        for timestep in tqdm(
             reversed(range(0, self.num_timesteps)),
             desc="sampling loop time step",
             total=self.num_timesteps,
         ):
-            self_cond = x_start if self.self_condition else None
-            img, x_start = self.p_sample(img, t, self_cond)
-            imgs.append(img)
+            img, x_start = self.p_sample(noise, timestep)
+            images.append(img)
 
         ret = img if not return_all_timesteps else torch.stack(imgs, dim=1)
 
@@ -351,16 +381,18 @@ class DDPM(nn.Module):
     @torch.inference_mode()
     def sample_generation(self, batch_size=16, return_all_timesteps=False):
         """Generate images from noise samples
-        
+
         This is basically the evaluation/inference function but I think diffusion models
         do not really use the term evaluation.
-        
+
         Args:
-            batch_size: 
+            batch_size:
         """
         (h, w), channels = self.image_size, self.channels
-        self.p_sample_loop((batch_size, channels, h, w), return_all_timesteps=return_all_timesteps)
-        
+        self.p_sample_loop(
+            (batch_size, channels, h, w), return_all_timesteps=return_all_timesteps
+        )
+
         return None
 
     @torch.inference_mode()

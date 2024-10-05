@@ -35,7 +35,7 @@ class Trainer:
             use_cuda: Whether to use the GPU
             eval_intervals: Number of steps to evaluate the model after during training
             num_eval_samples: number of samples to evaluate; must be a perfect square
-            
+
         """
         ## TODO: PROBALBY REMOVE THESE Initialize training objects
         # self.optimizer = optimizer_map[optimizer]
@@ -51,9 +51,9 @@ class Trainer:
         # Logging params
         self.eval_intervals = eval_intervals
         self.log_intervals = logging_intervals
-            
+
         self.max_grad_norm = max_grad_norm
-        
+
         self.num_eval_samples = num_eval_samples
         # TODO: Implement FID evaluator
 
@@ -86,11 +86,11 @@ class Trainer:
             ckpt_every: Save the model after n epochs
         """
         ema_model = copy.deepcopy(diffusion_model)
-        
+
         # Infinitely cycle through the dataloader to train by steps
         # i.e., once all the samples have been sampled, it will start over again
         dataloader_train = self._cylce(dataloader_train)
-        
+
         log.info("\nTraining started\n")
         total_train_start_time = time.time()
 
@@ -100,7 +100,7 @@ class Trainer:
 
         # Starting the epoch at 1 makes calculations more intuitive
         for step in range(start_step, train_steps + 1):
-            diffusion_model.train() # TODO: I think this will also set the unet model to train mode but I should verify
+            diffusion_model.train()  # TODO: I think this will also set the unet model to train mode but I should verify
 
             # Train one epoch
             self._train_one_step(
@@ -110,14 +110,12 @@ class Trainer:
                 optimizer,
                 scheduler,
             )
-            
+
             # Update the EMA model's weights
             self._calculate_ema(diffusion_model, ema_model)
-            
+
             # Evaluate the diffusion model at a specified interval
             if step % self.eval_interval == 0:
-                
-
                 # Evaluate the model on the validation set
                 log.info("\nEvaluating — step %d", step)
                 metrics_output = self._evaluate(
@@ -167,27 +165,28 @@ class Trainer:
         """
         samples = next(dataloader_train).to(self.device)
 
-
         # Forward pass through diffusion model; noises and denoises the image; diffusion_model contains the
         # the unet model for denoising
         loss = diffusion_model(samples)
-        
+
         loss.backward()
 
         # Clips the magnitude (l2) of the gradients to max_norm if the magnitude is greater than this value;
         # this works by calculating the unit vector of the gradients (grad_vec / ||grad_vec||) and if this
         # is greater than max_norm, the gradients are clipped by dividing by ||grad_vec|| which will create
         # a unit vector; a unit vector has a l2 magnitude of 1 so if we take the l2 of all the gradients after
-        # clipping the magnitude should be 1; if max_norm is not 1, a unit vector is created and then multiplied 
+        # clipping the magnitude should be 1; if max_norm is not 1, a unit vector is created and then multiplied
         # by this max_norm value; this works because the gradients are now a unit vector so multiplying by
-        # this constant will the scale the clipped gradients linearly; the gradients of the models parameters 
+        # this constant will the scale the clipped gradients linearly; the gradients of the models parameters
         # are clipped (i.e., parameter.grad) not the parameters itself, therefore, clip_grad_norm_
         # should be placed after loss.backward but before optimizer.step
-        nn.utils.clip_grad_norm_(diffusion_model.parameters(), max_norm=self.max_grad_norm)
+        nn.utils.clip_grad_norm_(
+            diffusion_model.parameters(), max_norm=self.max_grad_norm
+        )
 
         optimizer.step()
         optimizer.zero_grad()
-        
+
         ############# START HERE!!!! look over ema stuff too ###############
 
         if (steps + 1) % 100 == 0:
@@ -226,14 +225,15 @@ class Trainer:
         Returns:
             A Tuple of the (prec, rec, ap, f1, and class) per class
         """
-        # Eval is only performed with the ema model 
+        # Eval is only performed with the ema model
         ema_model.eval()
-        
+
         ##################### START HJEREREREREE
-        
-        
+
         eval_images = []
-        eval_batch_sizes = self._num_samples_to_batches(self.num_eval_samples, batch_size)
+        eval_batch_sizes = self._num_samples_to_batches(
+            self.num_eval_samples, batch_size
+        )
         for batch_size in eval_batch_sizes:
             ema_model.eval_sample(batch_size=batch_size)
 
@@ -284,13 +284,13 @@ class Trainer:
         print_eval_stats(metrics_output, class_names, verbose=True)
 
         return metrics_output
-    
+
     def _calculate_ema(source_model: nn.Module, target_model: nn.Module, decay):
         """Calculate the exponential moving average (ema) from a source model's weights
         and the current target_model's weights; the updated weights are stored in target_model
-        
+
         TODO: write about the benefit here
-        
+
         Args:
             source_model: the model to calcuate the ema on
             target_model: the model to store the ema of the weights
@@ -300,17 +300,17 @@ class Trainer:
         target_dict = target_model.state_dict()
         for key in source_dict.keys():
             target_dict[key].data.copy_(
-                target_dict[key].data * decay +
-                source_dict[key].data * (1 - decay))
-            
+                target_dict[key].data * decay + source_dict[key].data * (1 - decay)
+            )
+
     def _num_samples_to_batches(num_samples: int, batch_size: int):
         """Create a list of batch sizes and the remaining batch size at the last index;
         this is useful to pass the number of eval samples by batch
-        
+
         Example: num_samples = 25 and batch_size = 16 -> [16, 9]
-        
+
         Args:
-            num_samples: number of samples to pass into the model; typically these are 
+            num_samples: number of samples to pass into the model; typically these are
                          evaluation samples that will be generated
             batch_size: batch size to split the samples into
         """
@@ -320,23 +320,22 @@ class Trainer:
         if remainder > 0:
             batch_arr.append(remainder)
         return batch_arr
-    
+
     def _cylce(dataloader: data.DataLoader):
         """This function infinitely cycles through a torch dataloader. This is useful
         when you want to train by steps rather than epochs.
-        
+
         It functions exactly the same as training by epochs; i.e., the dataloader
         will still sample all of the samples in the dataset first and once it reaches the end of
         the dataset it will restart; if shuffle is specified in the dataloader, the shuffling will
         still be used randomly to mix samples in batches just like training by epochs
-        
+
         Args:
          dataloader: A torch dataloader
         """
         while True:
             for data in dataloader:
                 yield data
-        
 
     def _save_model(
         self, model, optimizer, lr_scheduler, current_epoch, ckpt_every, save_path
