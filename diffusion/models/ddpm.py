@@ -149,6 +149,8 @@ class DDPM(nn.Module):
             "posterior_log_variance_clipped",
             torch.log(posterior_variance.clamp(min=1e-20)),
         )
+
+        # TODO: understand and comment this
         register_buffer(
             "posterior_mean_coef1",
             betas * torch.sqrt(alphas_cumprod_prev) / (1.0 - alphas_cumprod),
@@ -179,11 +181,20 @@ class DDPM(nn.Module):
     def device(self):
         return self.betas.device
 
-    def predict_start_from_noise(self, x_t, t, noise):
-        return (
-            extract(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
-            - extract(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * noise
-        )
+    def predict_start_from_noise(self, x_t, timestep, pred_noise):
+        """TODO: this method is used if the
+        training objective of the unet model is to predict the noise in the data
+
+        Args:
+            x_t: noisy image at timestep t (b, c, h, w)
+            timestep:
+            pred_noise: predicted noise from the unet model (b, c, h, w)
+
+        """
+
+        image_term = extract_values(self.sqrt_recip_alphas_cumprod, timestep, x_t.shape) * x_t
+        noise_term = extract_values(self.sqrt_recipm1_alphas_cumprod, timestep, x_t.shape) * pred_noise
+        return image_term - noise_term
 
     def predict_noise_from_start(self, x_t, t, x0):
         return (
@@ -203,6 +214,11 @@ class DDPM(nn.Module):
         )
 
     def q_posterior(self, x_start, x_t, t):
+        """TODO START HERE #####################
+
+        Args:
+            TODO
+        """
         posterior_mean = (
             extract(self.posterior_mean_coef1, t, x_t.shape) * x_start
             + extract(self.posterior_mean_coef2, t, x_t.shape) * x_t
@@ -214,43 +230,48 @@ class DDPM(nn.Module):
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def model_predictions(
-        self, x, t, x_self_cond=None, clip_x_start=False, rederive_pred_noise=False
+        self, sampled_noise, timestep, clip_x_start=False, rederive_pred_noise=False
     ):
-        """Predict 1 of 3 objectives (noise, original_image, or v) depending how the model was trained;
-        supposedly predicting v works the best but ddpm predicts the noise so for now we'll use noise
-        as the objective
+        """Predict the models training objective; for ddpm this is the noise of the image;
+        this works by first predicting the objective from the trained unet model and then
+        using the equations from the ddpm paper to reconstruct the image
         
-        ############### START HERE
         Args:
+            sampled_noise: random noise from normal distribution (b, c, h, w)
+            timestep: a single denoising timestep (b,)
 
+        Returns:
+            TODO
         """
-        model_output = self.model(x, t, x_self_cond)
-        maybe_clip = (
-            partial(torch.clamp, min=-1.0, max=1.0) if clip_x_start else identity
-        )
+        # model predictions (b, c, h, w);
+        model_output = self.model(sampled_noise, timestep)
 
+        # Since this is a unet model the input and output shape should be the same
+        assert sampled_noise.shape == model_output.shape
+
+        # Construct an image from the predicted noise
         if self.objective == "pred_noise":
             pred_noise = model_output
-            x_start = self.predict_start_from_noise(x, t, pred_noise)
-            x_start = maybe_clip(x_start)
+            x_start = self.predict_start_from_noise(sampled_noise, timestep, pred_noise)
 
+            # Seems to only be used for ddim TODO remove this if not used
             if clip_x_start and rederive_pred_noise:
-                pred_noise = self.predict_noise_from_start(x, t, x_start)
+                pred_noise = self.predict_noise_from_start(sampled_noise, timestep, x_start)
 
+        # TODO implement x0 and v at a later point
         elif self.objective == "pred_x0":
             x_start = model_output
             x_start = maybe_clip(x_start)
             pred_noise = self.predict_noise_from_start(x, t, x_start)
-
         elif self.objective == "pred_v":
             v = model_output
             x_start = self.predict_start_from_v(x, t, v)
             x_start = maybe_clip(x_start)
             pred_noise = self.predict_noise_from_start(x, t, x_start)
 
-        return ModelPrediction(pred_noise, x_start)
+        return pred_noise, x_start
 
-    def p_mean_variance(self, noise, timestep, clip_denoised=True):
+    def p_mean_variance(self, sampled_noise, timestep, clip_denoised=True):
         """TODO
         
         Args:
@@ -261,16 +282,16 @@ class DDPM(nn.Module):
 
         """
         # predict the models training objective; for ddpm paper this is the noise
-        preds = self.model_predictions(noise, timestep)
-        x_start = preds.pred_x_start
+        pred_noise, pred_x_start = self.model_predictions(sampled_noise, timestep)
 
+        # clip to the same scale the data was trained on [-1, 1]
         if clip_denoised:
-            x_start.clamp_(-1.0, 1.0)
+            pred_x_start.clamp_(-1.0, 1.0)
 
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(
-            x_start=x_start, x_t=x, t=t
+            x_start=pred_x_start, x_t=sampled_noise, t=timestep
         )
-        return model_mean, posterior_variance, posterior_log_variance, x_start
+        return model_mean, posterior_variance, posterior_log_variance, pred_x_start
 
     @torch.inference_mode()
     def p_sample(self, noise, timestep: int, x_self_cond=None):
