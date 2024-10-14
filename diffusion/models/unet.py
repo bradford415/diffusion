@@ -119,11 +119,13 @@ class Unet(nn.Module):
                 [
                     ResnetBlock(ch_in, ch_in),
                     ResnetBlock(ch_in, ch_in),
-                    MultiheadedAttentionFM(
-                        embed_ch=layer_attn_chh, heads=layer_attn_heads
-                    )
-                    if attn
-                    else nn.Identity(),
+                    (
+                        MultiheadedAttentionFM(
+                            embed_ch=layer_attn_chh, heads=layer_attn_heads
+                        )
+                        if attn
+                        else nn.Identity()
+                    ),
                 ]
             )
 
@@ -165,13 +167,15 @@ class Unet(nn.Module):
                     # ch_out+ch_in channels for channel-wise concatenation
                     ResnetBlock(ch_out + ch_in, ch_out),
                     ResnetBlock(ch_out + ch_in, ch_out),
-                    MultiheadedAttentionFM(
-                        ch_out,
-                        dim_head=layer_attn_ch,
-                        heads=layer_attn_heads,
-                    )
-                    if attn
-                    else nn.Identity(),
+                    (
+                        MultiheadedAttentionFM(
+                            ch_out,
+                            dim_head=layer_attn_ch,
+                            heads=layer_attn_heads,
+                        )
+                        if attn
+                        else nn.Identity()
+                    ),
                 ]
             )
 

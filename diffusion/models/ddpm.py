@@ -60,7 +60,7 @@ class DDPM(nn.Module):
 
         self.image_size = image_size
 
-        # Can probably remove these objectives
+        # TODO: quick comment
         self.objective = objective
         assert objective in {
             "pred_noise",
@@ -129,10 +129,15 @@ class DDPM(nn.Module):
         # START HERE, I don't think this log param is used for anything
         # register_buffer("log_one_minus_alphas_cumprod", torch.log(1.0 - alphas_cumprod))
 
-        # Compute 1 / sqrt(α¯) equation 11
+        # sqrt_recip_alphas_cumprod & sqrt_recipm1_alphas_cumprod are used to compute
+        # equation 15 which estimates the denoised image x_0; 
+        # x_0 is used to compute the predicted mean in equation 7
+        
+        # Equation 15  left term after distributing 1 / sqrt(α¯); 
         register_buffer("sqrt_recip_alphas_cumprod", torch.sqrt(1.0 / alphas_cumprod))
 
-        # I'm not sure what this is used for yet
+        # Equation 15 right term after distributing 1 / sqrt(α¯);
+        # sqrt(1-α)/sqrt(α) => sqrt((1-α)/α) => sqrt(1/α - α/α) => sqrt(1/α - 1)  
         register_buffer(
             "sqrt_recipm1_alphas_cumprod", torch.sqrt(1.0 / alphas_cumprod - 1)
         )
@@ -145,12 +150,13 @@ class DDPM(nn.Module):
         register_buffer("posterior_variance", posterior_variance)
 
         # NOTE: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
+        #       e.g., setting 0 to a very small number avoids log of 0 
         register_buffer(
             "posterior_log_variance_clipped",
             torch.log(posterior_variance.clamp(min=1e-20)),
         )
 
-        # TODO: understand and comment this
+        # Used to calculate the posterior mean from equation 7
         register_buffer(
             "posterior_mean_coef1",
             betas * torch.sqrt(alphas_cumprod_prev) / (1.0 - alphas_cumprod),
@@ -182,9 +188,14 @@ class DDPM(nn.Module):
         return self.betas.device
 
     def predict_start_from_noise(self, x_t, timestep, pred_noise):
-        """Calculates the original image, x_0, from the noise prediction of the unet
-        model. This is NOT the final image generation, it is used to help calculate
-        the noise mean.
+        """Use equation 15 to estimate the denoised image at timestep 0, x_0, 
+        from the noise prediction (epsilon). This is NOT the final image generation, it is used to 
+        help calculate the noise mean.
+
+        NOTE: The parameters below seem to be rearranged compared to the eq 15;
+              a short simplification is shown in the attribute definition to 
+              show where they come from; specifically sqrt_recipm1_alphas_cumprod
+              was the attribute which confused me the most
 
         Args:
             x_t: noisy image at timestep t (b, c, h, w); during sampling the noisy image is
@@ -193,16 +204,17 @@ class DDPM(nn.Module):
             pred_noise: predicted noise from the unet model (b, c, h, w)
 
         """
-
         image_term = extract_values(self.sqrt_recip_alphas_cumprod, timestep, x_t.shape) * x_t
         noise_term = extract_values(self.sqrt_recipm1_alphas_cumprod, timestep, x_t.shape) * pred_noise
         return image_term - noise_term
 
+    # TODO: Implement at a later point
     def predict_noise_from_start(self, x_t, t, x0):
         return (
             extract(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t - x0
         ) / extract(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape)
 
+    # TODO: Implement at a later point
     def predict_v(self, x_start, t, noise):
         return (
             extract(self.sqrt_alphas_cumprod, t, x_start.shape) * noise
@@ -215,21 +227,29 @@ class DDPM(nn.Module):
             - extract(self.sqrt_one_minus_alphas_cumprod, t, x_t.shape) * v
         )
 
-    def q_posterior(self, x_start, x_t, t):
+    def q_posterior(self, x_start, x_t, timestep):
         """Compute the posterior mean (mu) and posterior variance (beta)
-        from equation 7 
+        from equation 7
 
         Args:
-            
-            TODO
+            x_start: the estimated denoised image, x_0, from equation 15
+            x_t: the noisy image at timestep t being denoised
+            timestep: current denoising timestep
+        
+        Returns:
+            The posterior_mean, posterior_variance, & log posterior_variance
+            TODO: Put the shapes
         """
+        # Calculate the posterior mean (mu) using equation 7
         posterior_mean = (
-            extract_values(self.posterior_mean_coef1, t, x_t.shape) * x_start
-            + extract_values(self.posterior_mean_coef2, t, x_t.shape) * x_t
+            extract_values(self.posterior_mean_coef1, timestep, x_t.shape) * x_start
+            + extract_values(self.posterior_mean_coef2, timestep, x_t.shape) * x_t
         )
-        posterior_variance = extract(self.posterior_variance, t, x_t.shape)
-        posterior_log_variance_clipped = extract(
-            self.posterior_log_variance_clipped, t, x_t.shape
+
+        # Posterior variance (beta) from equation 7
+        posterior_variance = extract_values(self.posterior_variance, timestep, x_t.shape)
+        posterior_log_variance_clipped = extract_values(
+            self.posterior_log_variance_clipped, timestep, x_t.shape
         )
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
@@ -278,13 +298,15 @@ class DDPM(nn.Module):
         return pred_noise, x_start
 
     def p_mean_variance(self, sampled_noise, timestep, clip_denoised=True):
-        """TODO
+        """Calculates the posterior_mean and grabs the posterior_variance
+        and posterior_log_variance. These parameters are used to compute
+        x_{t_1} so we can iteratively denoise the randomly sampled noise.
         
         Args:
             noise: random noise from normal distribution (b, c, h, w)
             timestep: a single denoising timestep (b,); unlike training this will
                       be the same value for the entire batch
-            clip_denoised
+            clip_denoised: TODO
 
         """
         # predict the models training objective; for ddpm paper this is the noise
@@ -294,6 +316,7 @@ class DDPM(nn.Module):
         if clip_denoised:
             pred_x_start.clamp_(-1.0, 1.0)
 
+        # Calculates the posterior_mean & extracts posterior_variance, posterior_log_variance
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(
             x_start=pred_x_start, x_t=sampled_noise, t=timestep
         )
