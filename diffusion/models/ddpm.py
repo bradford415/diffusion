@@ -235,7 +235,7 @@ class DDPM(nn.Module):
             x_start: the estimated denoised image, x_0, from equation 15
             x_t: the noisy image at timestep t being denoised
             timestep: current denoising timestep
-        
+         
         Returns:
             The posterior_mean, posterior_variance, & log posterior_variance
             TODO: Put the shapes
@@ -331,34 +331,45 @@ class DDPM(nn.Module):
                           at the start of sampling this is pure noise from a normal distribution
             timestep: the current denoising timestep (1,); unlike training this will just
                       be a scalar
+        
+        Returns:
+            1. the predicted image at the previous timestep x_{t-1}
+            2. 
         """
         b, c, h, w = noise.shape, 
         
         # repeat the timestep for the batch size (b,)
         batched_times = torch.full((b,), timestep, device=self.device, dtype=torch.long)
         
+        # Calculate the posterior mean and grab the variances computed at the start
         model_mean, _, model_log_variance, x_start = self.p_mean_variance(
             sample_noise=sample_noise, timestep=batched_times, clip_denoised=True
         )
+        
+        # Generate random noise, z, to add to the mean (b, c, h, w); algorithm 2 line 4
         noise = torch.randn_like(sample_noise) if timestep > 0 else 0.0  # no noise if t == 0
         
-        # Compute the image at the previous timestep x_{t-1} (Algorithm 2 line 4)
-        # TODO understand where this model log variance
+        # Compute the image/sample at the previous timestep x_{t-1} (Algorithm 2 line 4);
+        # the entire left term is the mean
+        # TODO: not entirely sure where 0.5 and e come from; i think the e just cancels out the log
         pred_img = model_mean + (0.5 * model_log_variance).exp() * noise
         return pred_img, x_start
 
     @torch.inference_mode()
-    def p_sample_loop(self, shape, return_all_timesteps=False):
-        """TODO
+    def p_sample_loop(self, shape: Tuple, return_all_timesteps=False):
+        """Iteratively denoises randomly sampled noise from a gaussian distribution;
+        loops for (num_timesteps, 0]
 
         Args:
-        shape: shape to randomly sample noise of (b, c, h, w)
+            shape: shape to randomly sample noise of (b, c, h, w)
 
         """
         batch, device = shape[0], self.device
         
        # Create batch of noise from a normal distribution (b, c, h, w) 
         sample_noise = torch.randn(shape, device=device)
+
+        ############# START HERE and comment
         images = [sample_noise]
 
         x_start = None
@@ -372,6 +383,7 @@ class DDPM(nn.Module):
             img, x_start = self.p_sample(sample_noise, timestep)
             images.append(img)
 
+        ret = img if not return_all_timesteps else torch.stack(imgs, dim = 1)
 
         img = self.unnormalize(img)
         return img
