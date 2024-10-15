@@ -17,14 +17,14 @@ import torchvision.transforms.functional as F
 from PIL.Image import Image as PILImage
 
 
-class UnNormalize(object):
+class Unnormalize(object):
     """Unormalize a tensor that normalized by torchvision.transforms.Normalize
 
-    Normalize subtracts mean and divides by std dev so to UnNormalize we need to
+    Normalize subtracts mean and divides by std dev so to Unnormalize we need to
     multiply by the std dev and add the mean
     """
 
-    def __init__(self, mean, std, inplace=False):
+    def __init__(self, mean: List[float], std: List[float], inplace=False):
         self.mean = mean
         self.std = std
         self.inplace = inplace

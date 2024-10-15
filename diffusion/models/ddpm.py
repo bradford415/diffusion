@@ -7,6 +7,8 @@ from torch import nn
 from torch.nn import functional as F
 from tqdm import tqdm
 
+from diffusion.data.transforms import Unnormalize
+
 
 class DDPM(nn.Module):
     """DDPM model which is responsible for noising images and denoising with unet
@@ -179,9 +181,8 @@ class DDPM(nn.Module):
         elif objective == "pred_v":
             register_buffer("loss_weight", maybe_clipped_snr / (snr + 1))
 
-        # auto-normalization of data [0, 1] -> [-1, 1] - can turn off by setting it to be False
-
-        self.unnormalize = unnormalize_to_zero_to_one if auto_normalize else identity
+        # unnormalize [-1, 1] -> [0, 1]; After sampling, return data to [0,1] to visualize
+        self.unnormalize = Unnormalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 
     @property
     def device(self):
@@ -361,7 +362,12 @@ class DDPM(nn.Module):
         loops for (num_timesteps, 0]
 
         Args:
-            shape: shape to randomly sample noise of (b, c, h, w)
+            shape: shape to randomly sample noise of (b, c, h, w)'
+            return_all_timesteps: whether to return the denoised sample at all timesteps;
+                                  if false only the final denoised image is returned i.e., t=0
+                                  
+        Return:
+            TODO
 
         """
         batch, device = shape[0], self.device
@@ -369,10 +375,8 @@ class DDPM(nn.Module):
        # Create batch of noise from a normal distribution (b, c, h, w) 
         sample_noise = torch.randn(shape, device=device)
 
-        ############# START HERE and comment
+        # Stores the denoised sample at every timestep
         images = [sample_noise]
-
-        x_start = None
 
         # Loop from (num_timesteps, 0] 
         for timestep in tqdm(
@@ -380,85 +384,34 @@ class DDPM(nn.Module):
             desc="sampling loop time step",
             total=self.num_timesteps,
         ):
-            img, x_start = self.p_sample(sample_noise, timestep)
-            images.append(img)
+            denoised_img, x_start = self.p_sample(sample_noise, timestep)
+            images.append(denoised_img)
 
-        ret = img if not return_all_timesteps else torch.stack(imgs, dim = 1)
-
-        img = self.unnormalize(img)
-        return img
-
-    @torch.inference_mode()
-    def ddim_sample(self, shape, return_all_timesteps=False):
-        batch, device, total_timesteps, sampling_timesteps, eta, objective = (
-            shape[0],
-            self.device,
-            self.num_timesteps,
-            self.sampling_timesteps,
-            self.ddim_sampling_eta,
-            self.objective,
-        )
-
-        times = torch.linspace(
-            -1, total_timesteps - 1, steps=sampling_timesteps + 1
-        )  # [-1, 0, 1, 2, ..., T-1] when sampling_timesteps == total_timesteps
-        times = list(reversed(times.int().tolist()))
-        time_pairs = list(
-            zip(times[:-1], times[1:])
-        )  # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
-
-        img = torch.randn(shape, device=device)
-        imgs = [img]
-
-        x_start = None
-
-        for time, time_next in tqdm(time_pairs, desc="sampling loop time step"):
-            time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
-            self_cond = x_start if self.self_condition else None
-            pred_noise, x_start, *_ = self.model_predictions(
-                img, time_cond, self_cond, clip_x_start=True, rederive_pred_noise=True
-            )
-
-            if time_next < 0:
-                img = x_start
-                imgs.append(img)
-                continue
-
-            alpha = self.alphas_cumprod[time]
-            alpha_next = self.alphas_cumprod[time_next]
-
-            sigma = (
-                eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
-            )
-            c = (1 - alpha_next - sigma**2).sqrt()
-
-            noise = torch.randn_like(img)
-
-            img = x_start * alpha_next.sqrt() + c * pred_noise + sigma * noise
-
-            imgs.append(img)
-
-        ret = img if not return_all_timesteps else torch.stack(imgs, dim=1)
+        ret = denoised_img if not return_all_timesteps else torch.stack(images, dim = 1)
 
         ret = self.unnormalize(ret)
         return ret
 
+
     @torch.inference_mode()
     def sample_generation(self, batch_size=16):
-        """Generate images from noise samples
+        """Generate images from noise samples; in the ddpm paper this is
+        the sample algorithm 2, this is similar to inferencing
 
         This is basically the evaluation/inference function but I think diffusion models
         do not really use the term evaluation.
 
         Args:
-            batch_size:
+            batch_size: number of images to generate
         """
         (h, w), channels = self.image_size, self.channels
-        self.p_sample_loop(
-            (batch_size, channels, h, w)
+        
+        # Randomly sample a batch of noise and iteratively denoise it
+        image = self.p_sample_loop(
+            (batch_size, channels, h, w), return_all_timesteps=False
         )
 
-        return None
+        return image
 
     @torch.inference_mode()
     def interpolate(self, x1, x2, t=None, lam=0.5):
