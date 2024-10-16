@@ -32,7 +32,8 @@ class Trainer:
 
         Args:
             output_path: Path to save the train outputs
-            use_cuda: Whether to use the GPU
+            device: which device to use
+            max_grad_norm:
             eval_intervals: Number of steps to evaluate the model after during training
             num_eval_samples: number of samples to evaluate; must be a perfect square
 
@@ -55,6 +56,8 @@ class Trainer:
         self.max_grad_norm = max_grad_norm
 
         self.num_eval_samples = num_eval_samples
+
+        self.ema_decay = ema_decay
         # TODO: Implement FID evaluator
 
     def train(
@@ -64,9 +67,9 @@ class Trainer:
         dataloader_train: data.DataLoader,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
-        start_epoch: int = 1,
-        epochs: int = 100,
-        ckpt_epochs: int = 10,
+        start_step: int = 1,
+        steps: int = 700000,
+        ckpt_steps: int = 1000,
     ):
         """Trains a model
 
@@ -80,10 +83,10 @@ class Trainer:
             dataloader_val: Torch dataloader to loop through the val dataset
             optimizer: Optimizer which determines how to update the weights
             scheduler: Scheduler which determines how to change the learning rate
-            start_epoch: Epoch to start the training on; starting at 1 is a good default because it makes
-                         checkpointing and calculations more intuitive
-            epochs: The epoch to end training on; unless starting from a check point, this will be the number of epochs to train for
-            ckpt_every: Save the model after n epochs
+            start_step: the step to start the training on; starting at 1 is a good default because it makes
+                        checkpointing and calculations more intuitive
+            steps: number of stpes to train for; unless starting from a checkpoint, this will be the number of epochs to train for
+            ckpt_steps: Save the model after n steps
         """
         ema_model = copy.deepcopy(diffusion_model)
 
@@ -94,12 +97,12 @@ class Trainer:
         log.info("\nTraining started\n")
         total_train_start_time = time.time()
 
-        # Visualize the first batch for each dataloader; manually verifies data augmentation correctness
+        # TODO: Visualize the first batch for each dataloader; manually verifies data augmentation correctness
         self._visualize_batch(dataloader_train, "train", class_names)
         self._visualize_batch(dataloader_val, "val", class_names)
 
         # Starting the epoch at 1 makes calculations more intuitive
-        for step in range(start_step, train_steps + 1):
+        for step in range(start_step, steps + 1):
             diffusion_model.train()  # TODO: I think this will also set the unet model to train mode but I should verify
 
             # Train one epoch
@@ -112,7 +115,7 @@ class Trainer:
             )
 
             # Update the EMA model's weights
-            self._calculate_ema(diffusion_model, ema_model)
+            self._calculate_ema(diffusion_model, ema_model, self.ema_decay)
 
             # Evaluate the diffusion model at a specified interval
             if step % self.eval_interval == 0:
@@ -285,7 +288,7 @@ class Trainer:
 
         return metrics_output
 
-    def _calculate_ema(source_model: nn.Module, target_model: nn.Module, decay):
+    def _calculate_ema(source_model: nn.Module, target_model: nn.Module, decay: float):
         """Calculate the exponential moving average (ema) from a source model's weights
         and the current target_model's weights; the updated weights are stored in target_model
 

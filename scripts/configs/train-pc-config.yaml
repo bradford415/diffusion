@@ -11,9 +11,6 @@ output_path: "output/train"
 # Experiment name; this will be used for the output directory; use "development" when developing
 exp_name: "development"
 
-# Name of dataset; must be one of the names in the dataset_map dict
-dataset_name: ""
-
 # Parameters for the dataset class
 dataset:
   # Name of dataset
@@ -33,27 +30,29 @@ model_params:
 
   # Params for UNet model; see diffusion.models.unet for param descriptions
   unet:
+  # TODO: comment these params
     dim: 64
     dim_mults: [1, 2, 4, 8]
-    #flash_attn: True
+
+  # ema decay TODO write more on this
+  ema_decay: 0.995
+  
 
 train:
 
-  # Configurations for learning parameters such as the optmizier and lr scheduler
-  learning_config: "learning_config_1"
+  # Configurations for optimization parameters such as the optmizier and lr scheduler
+  optimizaiton_config: "opt_config_1"
 
   batch_size: 4
 
-  # Various epochs used during training
-  epochs:
+  # The step to start on; ddpm doesn't seem to use epochs and uses steps instead;
+  start_steps: 1
+  steps: 700000
 
-    # The epoch to start on; starting at 1 makes calculations for logging and checkpointing more intuitive
-    start_epoch: 1
-    epochs: 200
+  # Number of steps to checkpoint after; use 'null' to turn off checkpointing
+  ckpt_steps: 1000
 
-    # Number of epochs to checkpoint after; use 'null' to turn off checkpointing
-    ckpt_epochs: 10
-
+# Might remove if not used
 validation:
   batch_size: 4
 
@@ -77,12 +76,10 @@ reproducibility:
 # Params for training objects
 
 # Adam optimizer parameters defined here: https://github.com/eriklindernoren/PyTorch-YOLOv3/blob/master/config/yolov3.cfg
-learning_config_1:
+opt_config_1:
   optimizer: "adam"
 
-  learning_rate: 0.0001 #1e-4
+  learning_rate: 8e-5 # Lucidrains uses 8e-5 in the README
 
   # L2 regulartization penalty to add to the loss function: 
-  weight_decay: 0.0005
-
-  lr_scheduler: "lambda_lr"
+  weight_decay: 0.0

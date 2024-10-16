@@ -108,6 +108,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         "root": base_config["dataset"]["root"],
         "debug_mode": base_config["debug_mode"],
     }
+
     dataset_name = base_config["dataset"]["name"]
     if dataset_name == "cifar10":
         dataset_train = build_cifar("cifar10", "train", **common_dataset_kwargs)
@@ -146,20 +147,23 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     train_args = base_config["train"]
 
     # Extract the learning parameters such as lr, optimizer params and lr scheduler
-    learning_config = train_args["learning_config"]
+    learning_config = train_args["optimization_config"]
     learning_params = base_config[learning_config]
 
     # Initialize training objects
     optimizer = _init_training_objects(
         model_params=model.parameters(),
         optimizer=learning_params["optimizer"],
-        scheduler=learning_params["lr_scheduler"],
         learning_rate=learning_params["learning_rate"],
         weight_decay=learning_params["weight_decay"],
     )
 
+    #################### START HERE, MAKE SURE ALL THE ARGS ARE RIGHT
     trainer = Trainer(
-        output_path=str(output_path), device=device, logging_intervals=logging_intervals
+        output_path=str(output_path),
+        device=device,
+        logging_intervals=logging_intervals,
+        ema_decay=train_args["model_params"]["ema_decay"],
     )
 
     ## TODO: Implement checkpointing somewhere around here (or maybe in Trainer)

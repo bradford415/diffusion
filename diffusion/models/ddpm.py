@@ -132,14 +132,14 @@ class DDPM(nn.Module):
         # register_buffer("log_one_minus_alphas_cumprod", torch.log(1.0 - alphas_cumprod))
 
         # sqrt_recip_alphas_cumprod & sqrt_recipm1_alphas_cumprod are used to compute
-        # equation 15 which estimates the denoised image x_0; 
+        # equation 15 which estimates the denoised image x_0;
         # x_0 is used to compute the predicted mean in equation 7
-        
-        # Equation 15  left term after distributing 1 / sqrt(α¯); 
+
+        # Equation 15  left term after distributing 1 / sqrt(α¯);
         register_buffer("sqrt_recip_alphas_cumprod", torch.sqrt(1.0 / alphas_cumprod))
 
         # Equation 15 right term after distributing 1 / sqrt(α¯);
-        # sqrt(1-α)/sqrt(α) => sqrt((1-α)/α) => sqrt(1/α - α/α) => sqrt(1/α - 1)  
+        # sqrt(1-α)/sqrt(α) => sqrt((1-α)/α) => sqrt(1/α - α/α) => sqrt(1/α - 1)
         register_buffer(
             "sqrt_recipm1_alphas_cumprod", torch.sqrt(1.0 / alphas_cumprod - 1)
         )
@@ -152,7 +152,7 @@ class DDPM(nn.Module):
         register_buffer("posterior_variance", posterior_variance)
 
         # NOTE: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
-        #       e.g., setting 0 to a very small number avoids log of 0 
+        #       e.g., setting 0 to a very small number avoids log of 0
         register_buffer(
             "posterior_log_variance_clipped",
             torch.log(posterior_variance.clamp(min=1e-20)),
@@ -189,12 +189,12 @@ class DDPM(nn.Module):
         return self.betas.device
 
     def predict_start_from_noise(self, x_t, timestep, pred_noise):
-        """Use equation 15 to estimate the denoised image at timestep 0, x_0, 
-        from the noise prediction (epsilon). This is NOT the final image generation, it is used to 
+        """Use equation 15 to estimate the denoised image at timestep 0, x_0,
+        from the noise prediction (epsilon). This is NOT the final image generation, it is used to
         help calculate the noise mean.
 
         NOTE: The parameters below seem to be rearranged compared to the eq 15;
-              a short simplification is shown in the attribute definition to 
+              a short simplification is shown in the attribute definition to
               show where they come from; specifically sqrt_recipm1_alphas_cumprod
               was the attribute which confused me the most
 
@@ -205,8 +205,13 @@ class DDPM(nn.Module):
             pred_noise: predicted noise from the unet model (b, c, h, w)
 
         """
-        image_term = extract_values(self.sqrt_recip_alphas_cumprod, timestep, x_t.shape) * x_t
-        noise_term = extract_values(self.sqrt_recipm1_alphas_cumprod, timestep, x_t.shape) * pred_noise
+        image_term = (
+            extract_values(self.sqrt_recip_alphas_cumprod, timestep, x_t.shape) * x_t
+        )
+        noise_term = (
+            extract_values(self.sqrt_recipm1_alphas_cumprod, timestep, x_t.shape)
+            * pred_noise
+        )
         return image_term - noise_term
 
     # TODO: Implement at a later point
@@ -236,7 +241,7 @@ class DDPM(nn.Module):
             x_start: the estimated denoised image, x_0, from equation 15
             x_t: the noisy image at timestep t being denoised
             timestep: current denoising timestep
-         
+
         Returns:
             The posterior_mean, posterior_variance, & log posterior_variance
             TODO: Put the shapes
@@ -248,7 +253,9 @@ class DDPM(nn.Module):
         )
 
         # Posterior variance (beta) from equation 7
-        posterior_variance = extract_values(self.posterior_variance, timestep, x_t.shape)
+        posterior_variance = extract_values(
+            self.posterior_variance, timestep, x_t.shape
+        )
         posterior_log_variance_clipped = extract_values(
             self.posterior_log_variance_clipped, timestep, x_t.shape
         )
@@ -260,7 +267,7 @@ class DDPM(nn.Module):
         """Predict the models training objective; for ddpm this is the noise of the image;
         this works by first predicting the objective from the trained unet model and then
         using the equations from the ddpm paper to reconstruct the image
-        
+
         Args:
             sampled_noise: random noise from normal distribution (b, c, h, w)
             timestep: a single denoising timestep (b,)
@@ -268,7 +275,7 @@ class DDPM(nn.Module):
         Returns:
             A tuple of:
                 1. the predicted noise in the data (b, c, h, w)
-                2. 
+                2.
         """
         # model predictions (b, c, h, w);
         model_output = self.model(sampled_noise, timestep)
@@ -283,7 +290,9 @@ class DDPM(nn.Module):
 
             # Seems to only be used for ddim TODO remove this if not used
             if clip_x_start and rederive_pred_noise:
-                pred_noise = self.predict_noise_from_start(sampled_noise, timestep, x_start)
+                pred_noise = self.predict_noise_from_start(
+                    sampled_noise, timestep, x_start
+                )
 
         # TODO implement x0 and v at a later point
         elif self.objective == "pred_x0":
@@ -302,7 +311,7 @@ class DDPM(nn.Module):
         """Calculates the posterior_mean and grabs the posterior_variance
         and posterior_log_variance. These parameters are used to compute
         x_{t_1} so we can iteratively denoise the randomly sampled noise.
-        
+
         Args:
             noise: random noise from normal distribution (b, c, h, w)
             timestep: a single denoising timestep (b,); unlike training this will
@@ -325,31 +334,33 @@ class DDPM(nn.Module):
 
     @torch.inference_mode()
     def p_sample(self, sample_noise, timestep: int, x_self_cond=None):
-        """" TODO
-        
+        """ " TODO
+
         Args:
             sample_noise: a batch of noise at a timestep used to generate images (b, c, h, w);
                           at the start of sampling this is pure noise from a normal distribution
             timestep: the current denoising timestep (1,); unlike training this will just
                       be a scalar
-        
+
         Returns:
             1. the predicted image at the previous timestep x_{t-1}
-            2. 
+            2.
         """
-        b, c, h, w = noise.shape, 
-        
+        b, c, h, w = (noise.shape,)
+
         # repeat the timestep for the batch size (b,)
         batched_times = torch.full((b,), timestep, device=self.device, dtype=torch.long)
-        
+
         # Calculate the posterior mean and grab the variances computed at the start
         model_mean, _, model_log_variance, x_start = self.p_mean_variance(
             sample_noise=sample_noise, timestep=batched_times, clip_denoised=True
         )
-        
+
         # Generate random noise, z, to add to the mean (b, c, h, w); algorithm 2 line 4
-        noise = torch.randn_like(sample_noise) if timestep > 0 else 0.0  # no noise if t == 0
-        
+        noise = (
+            torch.randn_like(sample_noise) if timestep > 0 else 0.0
+        )  # no noise if t == 0
+
         # Compute the image/sample at the previous timestep x_{t-1} (Algorithm 2 line 4);
         # the entire left term is the mean
         # TODO: not entirely sure where 0.5 and e come from; i think the e just cancels out the log
@@ -365,20 +376,20 @@ class DDPM(nn.Module):
             shape: shape to randomly sample noise of (b, c, h, w)'
             return_all_timesteps: whether to return the denoised sample at all timesteps;
                                   if false only the final denoised image is returned i.e., t=0
-                                  
+
         Return:
             TODO
 
         """
         batch, device = shape[0], self.device
-        
-       # Create batch of noise from a normal distribution (b, c, h, w) 
+
+        # Create batch of noise from a normal distribution (b, c, h, w)
         sample_noise = torch.randn(shape, device=device)
 
         # Stores the denoised sample at every timestep
         images = [sample_noise]
 
-        # Loop from (num_timesteps, 0] 
+        # Loop from (num_timesteps, 0]
         for timestep in tqdm(
             reversed(range(0, self.num_timesteps)),
             desc="sampling loop time step",
@@ -387,11 +398,10 @@ class DDPM(nn.Module):
             denoised_img, x_start = self.p_sample(sample_noise, timestep)
             images.append(denoised_img)
 
-        ret = denoised_img if not return_all_timesteps else torch.stack(images, dim = 1)
+        ret = denoised_img if not return_all_timesteps else torch.stack(images, dim=1)
 
         ret = self.unnormalize(ret)
         return ret
-
 
     @torch.inference_mode()
     def sample_generation(self, batch_size=16):
@@ -405,7 +415,7 @@ class DDPM(nn.Module):
             batch_size: number of images to generate
         """
         (h, w), channels = self.image_size, self.channels
-        
+
         # Randomly sample a batch of noise and iteratively denoise it
         image = self.p_sample_loop(
             (batch_size, channels, h, w), return_all_timesteps=False
