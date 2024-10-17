@@ -24,18 +24,21 @@ class Trainer:
         device: torch.device = torch.device("cpu"),
         max_grad_norm: float = 1.0,
         ema_decay: float = 0.9999,
+        ckpt_steps: int = 1000,
         eval_intervals: int = 40,
         num_eval_samples: int = 25,
-        logging_intervals: Dict = {},
+        logging_interval: int = 20
     ):
         """Constructor for the Trainer class
 
         Args:
             output_path: Path to save the train outputs
             device: which device to use
-            max_grad_norm:
-            eval_intervals: Number of steps to evaluate the model after during training
+            max_grad_norm: the l2 magnitude to clip the gradients
+            ema_decay: TODO
+            eval_intervals: number of steps to evaluate the model after during training
             num_eval_samples: number of samples to evaluate; must be a perfect square
+            logging_interval: number of steps to log the training progress after
 
         """
         ## TODO: PROBALBY REMOVE THESE Initialize training objects
@@ -49,15 +52,18 @@ class Trainer:
             "output_dir": Path(output_path),
         }
 
+        self.ckpt_steps = ckpt_steps
+
         # Logging params
         self.eval_intervals = eval_intervals
-        self.log_intervals = logging_intervals
+        self.log_intervals = logging_interval
 
         self.max_grad_norm = max_grad_norm
 
         self.num_eval_samples = num_eval_samples
 
         self.ema_decay = ema_decay
+        
         # TODO: Implement FID evaluator
 
     def train(
@@ -98,8 +104,8 @@ class Trainer:
         total_train_start_time = time.time()
 
         # TODO: Visualize the first batch for each dataloader; manually verifies data augmentation correctness
-        self._visualize_batch(dataloader_train, "train", class_names)
-        self._visualize_batch(dataloader_val, "val", class_names)
+        #self._visualize_batch(dataloader_train, "train", class_names)
+        #self._visualize_batch(dataloader_val, "val", class_names)
 
         # Starting the epoch at 1 makes calculations more intuitive
         for step in range(start_step, steps + 1):
@@ -190,25 +196,6 @@ class Trainer:
         optimizer.step()
         optimizer.zero_grad()
 
-        ############# START HERE!!!! look over ema stuff too ###############
-
-        if (steps + 1) % 100 == 0:
-            log.info(
-                "Current learning_rate: %s\n",
-                optimizer.state_dict()["param_groups"][0]["lr"],
-            )
-
-        if (steps + 1) % self.log_intervals["train_steps_freq"] == 0:
-            log.info(
-                "epoch: %-10d iter: %d/%-10d loss: %-10.4f",
-                epoch,
-                steps + 1,
-                len(dataloader_train),
-                final_loss.item(),
-            )
-
-            log.info("cpu utilization: %s\n", psutil.virtual_memory().percent)
-
     @torch.inference_mode
     def _evaluate(
         self,
@@ -231,12 +218,15 @@ class Trainer:
         # Eval is only performed with the ema model
         ema_model.eval()
 
-        ##################### START HJEREREREREE
+
 
         eval_images = []
+        
+        # Split the number of samples to generate into a list of batches
         eval_batch_sizes = self._num_samples_to_batches(
             self.num_eval_samples, batch_size
         )
+                ##################### START HJEREREREREE$$$%%%%%%%%%%%%%%%%%%%% line 1081 in lucid rains code
         for batch_size in eval_batch_sizes:
             ema_model.eval_sample(batch_size=batch_size)
 

@@ -7,14 +7,14 @@ import numpy as np
 from torchvision import transforms as T
 from torchvision.datasets import CIFAR10, CIFAR100
 
-from diffusion.data.transforms import UnNormalize
+from diffusion.data.transforms import Unnormalize
 
 # TODO: find a better place to put this (maybe return with make_cifa_transforms?)
 reverse_transforms = T.Compose(
     [
-        UnNormalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+        Unnormalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]), # [-1, 1] -> [0, 1]
         T.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW to HWC
-        T.Lambda(lambda t: t * 255.0),  # [0,1] -> [0, 255]
+        T.Lambda(lambda t: t * 255.0),  # [0, 1] -> [0, 255]
         T.Lambda(lambda t: t.numpy().astype(np.uint8)),
         T.toPILImage(),
     ]
@@ -23,7 +23,7 @@ reverse_transforms = T.Compose(
 
 def make_cifar_transforms(
     dataset_split,
-    resize_size: Union[int, Tuple] = 128,
+    resize_size: Union[int, Tuple] = None,
     crop_size: Union[int, Tuple, None] = None,
     horizontal_flip=0.5,
 ):
@@ -57,6 +57,7 @@ def make_cifar_transforms(
 
     # For now, the train and test transforms are the same
     if dataset_split == "train":
+        # resize and center crop are none by default
         return T.compose(
             [
                 T.Resize(resize_size),

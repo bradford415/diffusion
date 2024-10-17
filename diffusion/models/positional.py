@@ -12,7 +12,7 @@ class SinusoidalPosEmb(nn.Module):
 
         Args:
             dim: Dimension of the position embedding
-            theta:
+            theta: constant used in transformer paper
         """
         super().__init__()
         self.dim = dim

@@ -11,7 +11,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from diffusion.data.cifar import build_cifar
-from diffusion.models import Unet
+from diffusion.models import Unet, DDPM
 from diffusion.trainer import Trainer
 from diffusion.utils import reproduce
 
@@ -136,13 +136,6 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
 
     ## TODO: Apply weights initialization
 
-    # Loss function
-    # criterion = YoloV4Loss(
-    #     anchors=model_config["priors"]["anchors"],
-    #     batch_size=base_config["train"]["batch_size"],
-    #     device=device,
-    # )
-
     # Extract the train arguments from base config
     train_args = base_config["train"]
 
@@ -158,15 +151,19 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         weight_decay=learning_params["weight_decay"],
     )
 
-    #################### START HERE, MAKE SURE ALL THE ARGS ARE RIGHT
+    denoise_model = Unet(**base_config["model_params"]["unet"])
+    diffusion_model = DDPM(**base_config["model_params"]["ddpm"])
+
     trainer = Trainer(
         output_path=str(output_path),
         device=device,
         logging_intervals=logging_intervals,
-        ema_decay=train_args["model_params"]["ema_decay"],
+        ema_decay=base_config["model_params"]["ema_decay"],
+        ckpt_steps = train_args["ckpt_steps"],
+        eval_intervals=train_args["eval_intervals"],
+        num_eval_samples=train_args["num_eval_samples"],
+        logging_interval=base_config["logging_interval"]
     )
-
-    ## TODO: Implement checkpointing somewhere around here (or maybe in Trainer)
 
     # Save configuration files
     reproduce.save_configs(

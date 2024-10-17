@@ -29,36 +29,30 @@ class DDPM(nn.Module):
 
     def __init__(
         self,
-        model,
+        denoise_model,
         *,
         image_size: Tuple,
         timesteps=1000,
-        sampling_timesteps=None,
-        objective="pred_v",
-        beta_schedule="sigmoid",
-        schedule_fn_kwargs=dict(),
-        ddim_sampling_eta=0.0,
-        auto_normalize=True,
+        objective="pred_noise",
+        variance_schedule="sigmoid",
     ):
         """
         Args:
             model: A torch Unet model; theoretically this could be any encoder-decoder
                    model which downsamples and upsamples back to the original input size
-            image_size: TODO: verify it is (h, w) tuple of orignal image size in the form of (height, width)
-
+            image_size: tuple of orignal image size in the form of (height, width)
+            timesteps: max number of timesteps for diffusion; default is T=1000
+            objective: the objective the unet model will predict; the ddpm paper predicts noise but
+                       supposedly pred_v is better
+            variance_schedule: the variance schedule to use; the variance at each timestep is the betas
         """
         super().__init__()
-        assert not (type(self) == GaussianDiffusion and model.channels != model.out_dim)
-        assert (
-            not hasattr(model, "random_or_learned_sinusoidal_cond")
-            or not model.random_or_learned_sinusoidal_cond
-        )
 
-        self.model = model
+        self.denoise_model = denoise_model
 
         # Input image channels (e.g., rgb = 3)
-        self.channels = self.model.channels
-        self.self_condition = self.model.self_condition
+        self.channels = self.denoise_model.channels
+        self.self_condition = self.denoise_model.self_condition
 
         self.image_size = image_size
 
@@ -70,21 +64,21 @@ class DDPM(nn.Module):
             "pred_v",
         }, "objective must be either pred_noise (predict noise) or pred_x0 (predict image start) or pred_v (predict v [v-parameterization as defined in appendix D of progressive distillation paper, used in imagen-video successfully])"
 
-        if beta_schedule == "linear":
-            beta_schedule_fn = linear_beta_schedule
-        elif beta_schedule == "cosine":
-            beta_schedule_fn = cosine_beta_schedule
-        elif beta_schedule == "sigmoid":
-            beta_schedule_fn = sigmoid_beta_schedule
+        if variance_schedule == "linear":
+            variance_schedule_fn = linear_beta_schedule
+        elif variance_schedule == "cosine":
+            variance_schedule_fn = cosine_beta_schedule
+        elif variance_schedule == "sigmoid":
+            variance_schedule_fn = sigmoid_beta_schedule
         else:
-            raise ValueError(f"unknown beta schedule {beta_schedule}")
+            raise ValueError(f"unknown variance schedule {variance_schedule}")
 
         # Below we are essenttially defining the necessary alpha and beta variables of the
         # same shape so that we can sample all of the required variables for the forward
         # process at a specific time step
 
-        # Define the beta schedule; minumum and maximum noise to add
-        betas = beta_schedule_fn(timesteps, **schedule_fn_kwargs)
+        # Define the variance schedule; minumum and maximum noise to add
+        betas = variance_schedule_fn(timesteps)
 
         # Define alphas for the forward process;
         # these are defined in the ddpm paper in equation 4 and the paragraph above
@@ -98,15 +92,6 @@ class DDPM(nn.Module):
         # Number of timesteps for diffusion; typically T = 1000
         (timesteps,) = betas.shape
         self.num_timesteps = int(timesteps)
-
-        # TODO: Understand and comment sampling_timesteps;
-        self.sampling_timesteps = (
-            sampling_timesteps if sampling_timesteps is not None else timesteps
-        )
-
-        assert self.sampling_timesteps <= timesteps
-        self.is_ddim_sampling = self.sampling_timesteps < timesteps
-        self.ddim_sampling_eta = ddim_sampling_eta
 
         # helper function to register buffer from float64 to float32
 
@@ -167,19 +152,6 @@ class DDPM(nn.Module):
             "posterior_mean_coef2",
             (1.0 - alphas_cumprod_prev) * torch.sqrt(alphas) / (1.0 - alphas_cumprod),
         )
-
-        # derive loss weight
-        # snr - signal noise ratio
-
-        snr = alphas_cumprod / (1 - alphas_cumprod)
-
-        # TODO Understand this but I might be able to remove it
-        if objective == "pred_noise":
-            register_buffer("loss_weight", maybe_clipped_snr / snr)
-        elif objective == "pred_x0":
-            register_buffer("loss_weight", maybe_clipped_snr)
-        elif objective == "pred_v":
-            register_buffer("loss_weight", maybe_clipped_snr / (snr + 1))
 
         # unnormalize [-1, 1] -> [0, 1]; After sampling, return data to [0,1] to visualize
         self.unnormalize = Unnormalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
@@ -278,7 +250,7 @@ class DDPM(nn.Module):
                 2.
         """
         # model predictions (b, c, h, w);
-        model_output = self.model(sampled_noise, timestep)
+        model_output = self.denoise_model(sampled_noise, timestep)
 
         # Since this is a unet model the input and output shape should be the same
         assert sampled_noise.shape == model_output.shape
@@ -406,7 +378,8 @@ class DDPM(nn.Module):
     @torch.inference_mode()
     def sample_generation(self, batch_size=16):
         """Generate images from noise samples; in the ddpm paper this is
-        the sample algorithm 2, this is similar to inferencing
+        the sample algorithm 2, this is similar to inferencing; this method is typically
+        only called from the ema_model, not the 
 
         This is basically the evaluation/inference function but I think diffusion models
         do not really use the term evaluation.
@@ -507,7 +480,7 @@ class DDPM(nn.Module):
         noised_images = self.q_sample(x_start=img_start, t=timestep, noise=noise)
 
         # Predict the noise added to the image
-        model_out = self.model(noised_images, timestep)
+        model_out = self.denoise_model(noised_images, timestep)
 
         # TODO: Incorporate different objectives but for now use the original
         #       objective which is to predict the noise added to the image
@@ -525,7 +498,7 @@ class DDPM(nn.Module):
         loss = F.mse_loss(model_out, target, reduction="none")
 
         # Calculate the mean across c, h, & w (b, c*h*w); this allows us to weight each sample
-        # e.g., ddpm paper mentions that reducing the weight of samples at a low timestep could be effective
+        # e.g., ddpm paper mentions that reducing the weight of samples at a low timestep could be effective;
         # many implementations weight these samples but for now we'll keep it simple and won't apply weighting
         loss = loss.mean(axis=[1, 2, 3])
 
@@ -544,7 +517,7 @@ class DDPM(nn.Module):
             w,
         ) = image.shape
         device = image.device
-        img_size = self.image_size
+        img_size = (h, w)
         assert (
             h == img_size[0] and w == img_size[1]
         ), f"height and width of image must be {img_size}"

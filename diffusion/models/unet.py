@@ -27,17 +27,14 @@ class Unet(nn.Module):
 
     def __init__(
         self,
-        dim,
+        dim=64,
         dim_mults=(1, 2, 4, 8),
         image_ch=3,
-        self_condition=False,
-        learned_variance=False,
         sinusoidal_pos_emb_theta=10000,
         dropout=0.0,
         attn_ch=128,
         attn_heads=4,
         attn_levels=[False, False, False, True],
-        flash_attn=False,
     ):
         """Initialize UNet model
 
@@ -46,10 +43,13 @@ class Unet(nn.Module):
         is the variance based on the variance schedule (I'm pretty sure).
 
         Args:
-            dim:
+            dim: base dimension for the unet model; this will be multiplied by dim_mults
             dim_mults: Multiplier for dim which sets the number of channels in the unet model
-            img_channels: Number of channels in the original image and output image; rgb=3 grayscale=1
-            attn_ch: Total channels for MHA; embed_ch will be split across
+            img_ch: Number of channels in the original image and output image; rgb=3 grayscale=1
+            sinusoidal_pos_emb_theta: constant used in transfomrmer paper for postional embeddings
+            dropout: probability of a tensor element to be zeroed during training; 
+                     lucidrains uses 0.0 i.e., no dropout
+            attn_ch: Total channels for MHA; attn_ch will be split across
                        num_heads (attn_ch // num_heads) after it's projected
             attn_heads: Number of heads in mult-head attntion
             attn_levels: The levels of UNet to perform attention after; the default parameters apply attention
@@ -60,7 +60,6 @@ class Unet(nn.Module):
         # determine dimensions
 
         self.channels = image_ch
-        self.self_condition = self_condition
         input_channels = image_ch * 1  # (2 if self_condition else 1)
 
         init_dim = dim
@@ -117,8 +116,8 @@ class Unet(nn.Module):
             # the default parameters only use attention for the last Unet level (before the middle layers)
             level_layers = nn.ModuleList(
                 [
-                    ResnetBlock(ch_in, ch_in),
-                    ResnetBlock(ch_in, ch_in),
+                    ResnetBlock(ch_in, ch_in, dropout),
+                    ResnetBlock(ch_in, ch_in, dropout),
                     (
                         MultiheadedAttentionFM(
                             embed_ch=layer_attn_chh, heads=layer_attn_heads
@@ -140,11 +139,11 @@ class Unet(nn.Module):
 
         # Initialize the middle layers of unet
         mid_dim = dims[-1]
-        self.mid_block1 = ResnetBlock(mid_dim, mid_dim)
+        self.mid_block1 = ResnetBlock(mid_dim, mid_dim, dropout)
         self.mid_attn = MultiheadedAttentionFM(
             heads=attn_heads[-1], dim_head=attn_chh[-1]
         )
-        self.mid_block2 = ResnetBlock(mid_dim, mid_dim)
+        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, dropout)
 
         # Reverse unet level parameters for the upsampling process
         in_out_ch, attn_heads, attn_chh, attn_levels = (
@@ -165,8 +164,8 @@ class Unet(nn.Module):
                 [
                     # Mid layers use ch_out and down layers use ch_in therefore we need
                     # ch_out+ch_in channels for channel-wise concatenation
-                    ResnetBlock(ch_out + ch_in, ch_out),
-                    ResnetBlock(ch_out + ch_in, ch_out),
+                    ResnetBlock(ch_out + ch_in, ch_out, dropout),
+                    ResnetBlock(ch_out + ch_in, ch_out, dropout),
                     (
                         MultiheadedAttentionFM(
                             ch_out,
@@ -187,9 +186,8 @@ class Unet(nn.Module):
 
             self.up_layers.append(level_layers)
 
-        self.out_ch = image_ch * 1  # (1 if not learned_variance else 2)
-
-        self.final_res_block = ResnetBlock(init_dim * 2, init_dim)
+        self.out_ch = image_ch * 1  
+        self.final_res_block = ResnetBlock(init_dim * 2, init_dim, dropout)
 
         # Final convolution to return to rgb channels
         self.final_conv = nn.Conv2d(init_dim, self.out_ch, 1)
