@@ -372,6 +372,8 @@ class DDPM(nn.Module):
 
         ret = denoised_img if not return_all_timesteps else torch.stack(images, dim=1)
 
+        # unnormalizes the generated data and converts it to a PIL image;
+        # see data.transforms.Unnormalize for more details
         ret = self.unnormalize(ret)
         return ret
 
@@ -379,7 +381,7 @@ class DDPM(nn.Module):
     def sample_generation(self, batch_size=16):
         """Generate images from noise samples; in the ddpm paper this is
         the sample algorithm 2, this is similar to inferencing; this method is typically
-        only called from the ema_model, not the 
+        only called from the ema_model, not the
 
         This is basically the evaluation/inference function but I think diffusion models
         do not really use the term evaluation.
@@ -389,12 +391,12 @@ class DDPM(nn.Module):
         """
         (h, w), channels = self.image_size, self.channels
 
-        # Randomly sample a batch of noise and iteratively denoise it
-        image = self.p_sample_loop(
+        # Randomly sample a batch of noise and iteratively denoise it to generate an image
+        images = self.p_sample_loop(
             (batch_size, channels, h, w), return_all_timesteps=False
         )
 
-        return image
+        return images
 
     @torch.inference_mode()
     def interpolate(self, x1, x2, t=None, lam=0.5):

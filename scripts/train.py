@@ -11,7 +11,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from diffusion.data.cifar import build_cifar
-from diffusion.models import Unet, DDPM
+from diffusion.models import DDPM, Unet
 from diffusion.trainer import Trainer
 from diffusion.utils import reproduce
 
@@ -65,7 +65,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     log_path = output_path / "training.log"
 
     # Dictionary of logging parameters; used to log training and evaluation progress after certain intervals
-    logging_intervals = base_config["logging"]
+    logging_intervals = base_config["logging_interval"]
 
     # Configure logger that prints to a log file and stdout
     logging.basicConfig(
@@ -159,10 +159,10 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         device=device,
         logging_intervals=logging_intervals,
         ema_decay=base_config["model_params"]["ema_decay"],
-        ckpt_steps = train_args["ckpt_steps"],
+        ckpt_steps=train_args["ckpt_steps"],
         eval_intervals=train_args["eval_intervals"],
         num_eval_samples=train_args["num_eval_samples"],
-        logging_interval=base_config["logging_interval"]
+        logging_interval=base_config["logging_interval"],
     )
 
     # Save configuration files

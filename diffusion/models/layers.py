@@ -156,6 +156,8 @@ class MultiheadedAttentionFM(nn.Module):
         Returns:
             Linear projected attention values (batch, seq_len, embed_dim)
         """
+        super().__init__()
+        
         assert (
             embed_ch % num_heads == 0
         ), "The number of heads should be divisble by the attenion_dim"
@@ -166,7 +168,7 @@ class MultiheadedAttentionFM(nn.Module):
 
         self.group_norm = nn.GroupNorm(32, embed_ch)
 
-        # NOTE: might need to make bias true?
+        # NOTE: might need to make bias true? I don't think so though
         self.q_proj = nn.Conv2d(
             embed_ch, embed_ch, kernel_size=1, stride=1, padding=1, bias=False
         )
@@ -179,7 +181,7 @@ class MultiheadedAttentionFM(nn.Module):
 
         self.attention = Attention()
 
-        self.final_proj = nn.Conv2d(embed_ch, embed_ch, bias=False)
+        self.final_proj = nn.Conv2d(embed_ch, embed_ch, kernel_size=1, bias=False)
 
         # self.heads = nn.ModuleList(
         #     [Attention(head_dim, head_size, block_size) for _ in range(num_heads)]
@@ -247,7 +249,14 @@ class ResnetBlock(nn.Module):
     """
 
     def __init__(self, in_ch, out_ch, time_emb_dim=None, dropout=0.0):
-        """TODO"""
+        """TODO
+        Args:
+        in_ch:
+        out_ch:
+        time_emb_dim: dimension size of the input time embedding; this is determined
+                      at the start of unet when the timestep is intially projected
+
+        """
         super().__init__()
 
         if time_emb_dim is not None:

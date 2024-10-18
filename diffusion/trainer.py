@@ -27,7 +27,7 @@ class Trainer:
         ckpt_steps: int = 1000,
         eval_intervals: int = 40,
         num_eval_samples: int = 25,
-        logging_interval: int = 20
+        logging_interval: int = 20,
     ):
         """Constructor for the Trainer class
 
@@ -63,7 +63,7 @@ class Trainer:
         self.num_eval_samples = num_eval_samples
 
         self.ema_decay = ema_decay
-        
+
         # TODO: Implement FID evaluator
 
     def train(
@@ -104,8 +104,8 @@ class Trainer:
         total_train_start_time = time.time()
 
         # TODO: Visualize the first batch for each dataloader; manually verifies data augmentation correctness
-        #self._visualize_batch(dataloader_train, "train", class_names)
-        #self._visualize_batch(dataloader_val, "val", class_names)
+        # self._visualize_batch(dataloader_train, "train", class_names)
+        # self._visualize_batch(dataloader_val, "val", class_names)
 
         # Starting the epoch at 1 makes calculations more intuitive
         for step in range(start_step, steps + 1):
@@ -218,65 +218,19 @@ class Trainer:
         # Eval is only performed with the ema model
         ema_model.eval()
 
-
-
-        eval_images = []
-        
         # Split the number of samples to generate into a list of batches
         eval_batch_sizes = self._num_samples_to_batches(
             self.num_eval_samples, batch_size
         )
-                ##################### START HJEREREREREE$$$%%%%%%%%%%%%%%%%%%%% line 1081 in lucid rains code
+
+        generated_images = []
         for batch_size in eval_batch_sizes:
-            ema_model.eval_sample(batch_size=batch_size)
+            generated_images.append(ema_model.sample_generation(batch_size=batch_size))
 
-        labels = []
-        self.num_
-        sample_metrics = []  # List of tuples (true positives, cls_confs, cls_labels)
-        for steps, (samples, targets) in enumerate(dataloader_val):
-            samples = samples.to(self.device)
-            # targets = [
-            #     {key: value.to(self.device) for key, value in t.items()}
-            #     for t in targets
-            # ]
+        # TODO: Save images
 
-            # Extract labels from all samples in the batch into a 1d list
-            for target in targets:
-                labels += target["labels"].tolist()
-
-            for target in targets:
-                target["boxes"] = cxcywh_to_xyxy(target["boxes"])
-
-            # Predictions (B, num_preds, 5 + num_classes) where 5 is (tl_x, tl_y, br_x, br_y, objectness)
-            predictions = model(samples, inference=True)
-
-            # Transfer preds to CPU for post processing
-            predictions = misc.to_cpu(predictions)
-
-            # TODO: define these thresholds in the config file under postprocessing maybe?
-            nms_preds = non_max_suppression(
-                predictions, conf_thres=0.1, iou_thres=0.5  # nms thresh
-            )
-
-            sample_metrics += get_batch_statistics(
-                nms_preds, targets, iou_threshold=0.5
-            )
-
-        # No detections over whole validation set
-        if len(sample_metrics) == 0:
-            log.info("---- No detections over whole validation set ----")
-            return None
-
-        # Concatenate sample statistics (batch_size*num_preds,)
-        true_positives, pred_scores, pred_labels = [
-            np.concatenate(x, 0) for x in list(zip(*sample_metrics))
-        ]
-
-        metrics_output = ap_per_class(true_positives, pred_scores, pred_labels, labels)
-
-        print_eval_stats(metrics_output, class_names, verbose=True)
-
-        return metrics_output
+        # TODO: Calculate fid score
+        return None
 
     def _calculate_ema(source_model: nn.Module, target_model: nn.Module, decay: float):
         """Calculate the exponential moving average (ema) from a source model's weights

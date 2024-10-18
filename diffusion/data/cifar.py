@@ -12,17 +12,18 @@ from diffusion.data.transforms import Unnormalize
 # TODO: find a better place to put this (maybe return with make_cifa_transforms?)
 reverse_transforms = T.Compose(
     [
-        Unnormalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]), # [-1, 1] -> [0, 1]
+        Unnormalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),  # [-1, 1] -> [0, 1]
         T.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW to HWC
         T.Lambda(lambda t: t * 255.0),  # [0, 1] -> [0, 255]
         T.Lambda(lambda t: t.numpy().astype(np.uint8)),
-        T.toPILImage(),
+        T.ToPILImage(),
     ]
 )
 
 
 def make_cifar_transforms(
     dataset_split,
+    original_image_size: Tuple[int, int] = 32,
     resize_size: Union[int, Tuple] = None,
     crop_size: Union[int, Tuple, None] = None,
     horizontal_flip=0.5,
@@ -31,6 +32,7 @@ def make_cifar_transforms(
 
     Args:
         dataset_split: which dataset split to use; `train` or `val`
+        original_image_size: tuple, or int if square image, of the orginal height and width
         resize_size: Image size to resize the image to (h, w); if scalar, the smaller
                      image dimension will be resized to this value keeping the aspect ratio;
                      if tuple both dimensions will be resized to this value but the aspect ratio
@@ -42,9 +44,12 @@ def make_cifar_transforms(
 
 
     """
+    if resize_size is None:
+        resize_size = original_image_size
+
     # The default case uses resize and crop size as the same value
     if crop_size is None:
-        crop_size = resize_size
+        crop_size = original_image_size
 
     # Convert to tensor and normalize between [-1,1];
     # NOTE: this normalization is the same as the original implementation (i.e., img * 2 -1)
@@ -58,7 +63,7 @@ def make_cifar_transforms(
     # For now, the train and test transforms are the same
     if dataset_split == "train":
         # resize and center crop are none by default
-        return T.compose(
+        return T.Compose(
             [
                 T.Resize(resize_size),
                 T.RandomHorizontalFlip(p=horizontal_flip),
@@ -87,7 +92,7 @@ def build_cifar(
     dataset_root = Path(root)
 
     # Create the data augmentation transforms
-    data_transforms = make_cifar_transforms(dataset_split)
+    data_transforms = make_cifar_transforms(dataset_split, original_image_size=32)
 
     dataset_args = {
         "root": dataset_root,

@@ -47,7 +47,7 @@ class Unet(nn.Module):
             dim_mults: Multiplier for dim which sets the number of channels in the unet model
             img_ch: Number of channels in the original image and output image; rgb=3 grayscale=1
             sinusoidal_pos_emb_theta: constant used in transfomrmer paper for postional embeddings
-            dropout: probability of a tensor element to be zeroed during training; 
+            dropout: probability of a tensor element to be zeroed during training;
                      lucidrains uses 0.0 i.e., no dropout
             attn_ch: Total channels for MHA; attn_ch will be split across
                        num_heads (attn_ch // num_heads) after it's projected
@@ -98,7 +98,7 @@ class Unet(nn.Module):
 
         # TODO
         attn_heads = (attn_heads,) * num_stages
-        attn_chh = (attn_chh,) * num_stages
+        attn_ch = (attn_ch,) * num_stages
 
         # Create Unet layers
         self.down_layers = nn.ModuleList([])
@@ -111,16 +111,18 @@ class Unet(nn.Module):
             layer_attn_heads,
             layer_attn_chh,
             attn,
-        ) in enumerate(zip(in_out_ch, attn_heads, attn_chh, attn_levels)):
+        ) in enumerate(zip(in_out_ch, attn_heads, attn_ch, attn_levels)):
             # Whether to perform attention for the current Unet level;
             # the default parameters only use attention for the last Unet level (before the middle layers)
             level_layers = nn.ModuleList(
                 [
-                    ResnetBlock(ch_in, ch_in, dropout),
-                    ResnetBlock(ch_in, ch_in, dropout),
+                    ResnetBlock(ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout),
+                    ResnetBlock(ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout),
                     (
+                        # NOTE: this implementation uses the output of resnetblock as the dimension for attnetion; 
+                        #       the lucidrains implementation has a seperate parameter to control the attention dim
                         MultiheadedAttentionFM(
-                            embed_ch=layer_attn_chh, heads=layer_attn_heads
+                            embed_ch=layer_attn_chh, num_heads=layer_attn_heads
                         )
                         if attn
                         else nn.Identity()
@@ -139,17 +141,21 @@ class Unet(nn.Module):
 
         # Initialize the middle layers of unet
         mid_dim = dims[-1]
-        self.mid_block1 = ResnetBlock(mid_dim, mid_dim, dropout)
-        self.mid_attn = MultiheadedAttentionFM(
-            heads=attn_heads[-1], dim_head=attn_chh[-1]
+        self.mid_block1 = ResnetBlock(
+            mid_dim, mid_dim, time_emb_dim=time_dim, dropout=dropout
         )
-        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, dropout)
+        self.mid_attn = MultiheadedAttentionFM(
+            embed_ch=attn_ch[-1], num_heads=attn_heads[-1]
+        )
+        self.mid_block2 = ResnetBlock(
+            mid_dim, mid_dim, time_emb_dim=time_dim, dropout=dropout
+        )
 
         # Reverse unet level parameters for the upsampling process
-        in_out_ch, attn_heads, attn_chh, attn_levels = (
+        in_out_ch, attn_heads, attn_ch, attn_levels = (
             in_out_ch[::-1],
             attn_heads[::-1],
-            attn_chh[::-1],
+            attn_ch[::-1],
             attn_levels[::-1],
         )
 
@@ -164,13 +170,16 @@ class Unet(nn.Module):
                 [
                     # Mid layers use ch_out and down layers use ch_in therefore we need
                     # ch_out+ch_in channels for channel-wise concatenation
-                    ResnetBlock(ch_out + ch_in, ch_out, dropout),
-                    ResnetBlock(ch_out + ch_in, ch_out, dropout),
+                    ResnetBlock(
+                        ch_out + ch_in, ch_out, time_emb_dim=time_dim, dropout=dropout
+                    ),
+                    ResnetBlock(
+                        ch_out + ch_in, ch_out, time_emb_dim=time_dim, dropout=dropout
+                    ),
                     (
                         MultiheadedAttentionFM(
-                            ch_out,
-                            dim_head=layer_attn_ch,
-                            heads=layer_attn_heads,
+                            embed_ch=ch_out,
+                            num_heads=layer_attn_heads,
                         )
                         if attn
                         else nn.Identity()
@@ -186,8 +195,10 @@ class Unet(nn.Module):
 
             self.up_layers.append(level_layers)
 
-        self.out_ch = image_ch * 1  
-        self.final_res_block = ResnetBlock(init_dim * 2, init_dim, dropout)
+        self.out_ch = image_ch * 1
+        self.final_res_block = ResnetBlock(
+            init_dim * 2, init_dim, time_emb_dim=time_dim, dropout=dropout
+        )
 
         # Final convolution to return to rgb channels
         self.final_conv = nn.Conv2d(init_dim, self.out_ch, 1)
