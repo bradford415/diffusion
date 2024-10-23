@@ -12,6 +12,8 @@ from torch.utils import data
 from torchvision.transforms import functional as F
 from tqdm import tqdm
 
+from diffusion.visualize import save_gen_images
+
 log = logging.getLogger(__name__)
 
 
@@ -47,10 +49,7 @@ class Trainer:
 
         self.device = device
 
-        # Paths
-        self.output_paths = {
-            "output_dir": Path(output_path),
-        }
+        self.output_paths = output_path
 
         self.ckpt_steps = ckpt_steps
 
@@ -127,19 +126,21 @@ class Trainer:
             if step % self.eval_interval == 0:
                 # Evaluate the model on the validation set
                 log.info("\nEvaluating — step %d", step)
+                ######################## TODO start here  and fill out evaluate
                 metrics_output = self._evaluate(
                     model, criterion, dataloader_val, class_names=class_names
                 )
 
-            # Save the model every ckpt_epochs
-            if (epoch) % ckpt_epochs == 0:
-                ckpt_path = self.output_paths["output_dir"] / f"checkpoint{epoch:04}.pt"
+            # TODO: also save and replace best model based on fid score
+            
+            # Save the model every ckpt_steps
+            if steps % ckpt_steps == 0:
+                ckpt_path = self.output_paths["output_dir"] / f"checkpoint{step:07}.pt"
                 self._save_model(
-                    model,
+                    diffusion_model,
                     optimizer,
-                    scheduler,
-                    epoch,
-                    ckpt_epochs,
+                    ema_model,
+                    step,
                     save_path=ckpt_path,
                 )
 
@@ -227,7 +228,8 @@ class Trainer:
         for batch_size in eval_batch_sizes:
             generated_images.append(ema_model.sample_generation(batch_size=batch_size))
 
-        # TODO: Save images
+        for image_set in enumerate(generated_images):
+            save_gen_images(image_set, self.num_eval_samples**2, "generated_images.png")
 
         # TODO: Calculate fid score
         return None
@@ -285,14 +287,15 @@ class Trainer:
                 yield data
 
     def _save_model(
-        self, model, optimizer, lr_scheduler, current_epoch, ckpt_every, save_path
+        self, diffusion_model, optimizer, ema_model, current_step, save_path
     ):
+        """TODO"""
         torch.save(
             {
-                "model": model.state_dict(),
+                "model": diffusion_model.state_dict(),
                 "optimizer": optimizer.state_dict(),
-                "lr_scheduler": lr_scheduler.state_dict(),
-                "epoch": current_epoch,
+                "ema_model": ema_model.state_dict(),
+                "step": current_step,
             },
             save_path,
         )

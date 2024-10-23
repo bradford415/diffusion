@@ -13,6 +13,9 @@ class MultiheadAttention(nn.Module):
 
     def __init__(self, embed_dim, num_heads):
         """TODO
+        
+        NOTE: some MHA implementations allow you to specify the input dimensions to qkv and have
+        another parameter for full dimension of attention i.e., the qkv projection dim
 
         Args:
             embed_dim: Total dimension of the model; embed_dim will be split across
@@ -39,7 +42,7 @@ class MultiheadAttention(nn.Module):
         self.linear_proj = nn.linear(embed_dim, embed_dim, bias=False)
 
     def forward(self, queries: torch.Tensor, keys: torch.Tensor, values: torch.Tensor):
-        """ "Forward pass through Multiheaded Attention;
+        """Forward pass through Multiheaded Attention;
         for self-attention the queries, keys, and values should be the same
 
         Args:
