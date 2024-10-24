@@ -28,8 +28,9 @@ class Trainer:
         ema_decay: float = 0.9999,
         ckpt_steps: int = 1000,
         eval_intervals: int = 40,
+        eval_batch_size: int = 4,
         num_eval_samples: int = 25,
-        logging_interval: int = 20,
+        logging_intervals: int = 20,
     ):
         """Constructor for the Trainer class
 
@@ -55,10 +56,11 @@ class Trainer:
 
         # Logging params
         self.eval_intervals = eval_intervals
-        self.log_intervals = logging_interval
+        self.log_intervals = logging_intervals
 
         self.max_grad_norm = max_grad_norm
 
+        self.eval_batch_size = eval_batch_size
         self.num_eval_samples = num_eval_samples
 
         self.ema_decay = ema_decay
@@ -76,13 +78,14 @@ class Trainer:
         steps: int = 700000,
         ckpt_steps: int = 1000,
     ):
-        """Trains a model
+        """Trains a ddpm model
 
         Specifically, this method trains a model for n epochs and evaluates on the validation set.
         A model checkpoint is saved at user-specified intervals
 
         Args:
-            model: A pytorch model to be trained
+            diffusion_model: the diffusion model (ddpm) to train; this class should contain the denoise_model
+                             (unet) as an attribute
             criterion: The loss function to use for training
             dataloader_train: Torch dataloader to loop through the train dataset
             dataloader_val: Torch dataloader to loop through the val dataset
@@ -127,12 +130,10 @@ class Trainer:
                 # Evaluate the model on the validation set
                 log.info("\nEvaluating — step %d", step)
                 ######################## TODO start here  and fill out evaluate
-                metrics_output = self._evaluate(
-                    model, criterion, dataloader_val, class_names=class_names
-                )
+                metrics_output = self._evaluate(ema_model)
 
             # TODO: also save and replace best model based on fid score
-            
+
             # Save the model every ckpt_steps
             if steps % ckpt_steps == 0:
                 ckpt_path = self.output_paths["output_dir"] / f"checkpoint{step:07}.pt"
@@ -144,24 +145,20 @@ class Trainer:
                     save_path=ckpt_path,
                 )
 
-            # Current epoch time (train/val)
-            one_epoch_time = time.time() - one_epoch_start_time
-            one_epoch_time_str = str(datetime.timedelta(seconds=int(one_epoch_time)))
-            log.info("\nEpoch time  (h:mm:ss): %s", one_epoch_time_str)
-
         # Entire training time
         total_time = time.time() - total_train_start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
         log.info(
-            "Training time for %d epochs (h:mm:ss): %s ",
-            start_epoch - epochs,
+            "Training time for %d steps (h:mm:ss): %s ",
+            start_step - steps,
             total_time_str,
         )
+
+        log.info("training complete")
 
     def _train_one_step(
         self,
         diffusion_model: nn.Module,
-        criterion: nn.Module,
         dataloader_train: Iterable,
         optimizer: torch.optim.Optimizer,
     ):
@@ -169,7 +166,6 @@ class Trainer:
 
         Args:
             model: Model to train
-            criterion: Loss function
             dataloader_train: Dataloader for the training set
             optimizer: Optimizer to update the models weights
         """
@@ -201,17 +197,11 @@ class Trainer:
     def _evaluate(
         self,
         ema_model: nn.Module,
-        batch_size: int,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """A single forward pass to evluate the val set after training an epoch
+        """Denoises pure noise to generate and save images
 
         Args:
-            model: Model to train
-            criterion: Loss function; only used to inspect the loss on the val set,
-                       not used for backpropagation
-            dataloader_val: Dataloader for the validation set
-            device: Device to run the model on
-
+            ema model: model to sample from; typically only the ema model is used
 
         Returns:
             A Tuple of the (prec, rec, ap, f1, and class) per class
@@ -220,16 +210,16 @@ class Trainer:
         ema_model.eval()
 
         # Split the number of samples to generate into a list of batches
-        eval_batch_sizes = self._num_samples_to_batches(
-            self.num_eval_samples, batch_size
-        )
+        eval_batch_sizes = self._num_samples_to_batches(self.num_eval_samples)
 
         generated_images = []
         for batch_size in eval_batch_sizes:
             generated_images.append(ema_model.sample_generation(batch_size=batch_size))
 
         for image_set in enumerate(generated_images):
-            save_gen_images(image_set, self.num_eval_samples**2, "generated_images.png")
+            save_gen_images(
+                image_set, self.num_eval_samples**2, "generated_images.png"
+            )
 
         # TODO: Calculate fid score
         return None
@@ -252,20 +242,18 @@ class Trainer:
                 target_dict[key].data * decay + source_dict[key].data * (1 - decay)
             )
 
-    def _num_samples_to_batches(num_samples: int, batch_size: int):
+    def _num_samples_to_batches(self, num_samples: int):
         """Create a list of batch sizes and the remaining batch size at the last index;
         this is useful to pass the number of eval samples by batch
 
         Example: num_samples = 25 and batch_size = 16 -> [16, 9]
 
         Args:
-            num_samples: number of samples to pass into the model; typically these are
-                         evaluation samples that will be generated
-            batch_size: batch size to split the samples into
+            num_samples: number of samples to generate images of
         """
-        groups = num_samples // batch_size
-        remainder = num_samples % batch_size
-        batch_arr = [batch_size] * groups
+        groups = num_samples // self.eval_batch_size
+        remainder = num_samples % self.eval_batch_size
+        batch_arr = [self.eval_batch_size] * groups
         if remainder > 0:
             batch_arr.append(remainder)
         return batch_arr

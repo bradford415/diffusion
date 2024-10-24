@@ -13,7 +13,7 @@ class MultiheadAttention(nn.Module):
 
     def __init__(self, embed_dim, num_heads):
         """TODO
-        
+
         NOTE: some MHA implementations allow you to specify the input dimensions to qkv and have
         another parameter for full dimension of attention i.e., the qkv projection dim
 
@@ -160,7 +160,7 @@ class MultiheadedAttentionFM(nn.Module):
             Linear projected attention values (batch, seq_len, embed_dim)
         """
         super().__init__()
-        
+
         assert (
             embed_ch % num_heads == 0
         ), "The number of heads should be divisble by the attenion_dim"

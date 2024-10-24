@@ -64,9 +64,6 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     output_path.mkdir(parents=True, exist_ok=True)
     log_path = output_path / "training.log"
 
-    # Dictionary of logging parameters; used to log training and evaluation progress after certain intervals
-    logging_intervals = base_config["logging_interval"]
-
     # Configure logger that prints to a log file and stdout
     logging.basicConfig(
         level=logging.INFO,
@@ -140,7 +137,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     train_args = base_config["train"]
 
     # Extract the learning parameters such as lr, optimizer params and lr scheduler
-    learning_config = train_args["optimization_config"]
+    learning_config = train_args["learning_config"]
     learning_params = base_config[learning_config]
 
     # Initialize training objects
@@ -152,17 +149,16 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     )
 
     denoise_model = Unet(**base_config["model_params"]["unet"])
-    diffusion_model = DDPM(**base_config["model_params"]["ddpm"])
+    diffusion_model = DDPM(denoise_model, **base_config["model_params"]["ddpm"])
 
     trainer = Trainer(
         output_path=str(output_path),
         device=device,
-        logging_intervals=logging_intervals,
         ema_decay=base_config["model_params"]["ema_decay"],
         ckpt_steps=train_args["ckpt_steps"],
         eval_intervals=train_args["eval_intervals"],
         num_eval_samples=train_args["num_eval_samples"],
-        logging_interval=base_config["logging_interval"],
+        logging_intervals=base_config["logging_intervals"],
     )
 
     # Save configuration files
@@ -174,23 +170,24 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
 
     # Build trainer args used for the training
     trainer_args = {
-        "model": model,
+        "diffusion_model": diffusion_model,
         # "criterion": criterion,
         "dataloader_train": dataloader_train,
-        "dataloader_val": dataloader_val,
-        # "optimizer": optimizer,
-        **train_args["epochs"],
+        # "dataloader_val": dataloader_val,
+        "optimizer": optimizer,
+        "start_step": train_args["start_step"],
+        "steps": train_args["steps"],
     }
+    
+    # Train the ddpm model
     trainer.train(**trainer_args)
 
 
 def _init_training_objects(
     model_params: Iterable,
     optimizer: str = "sgd",
-    scheduler: str = "step_lr",
     learning_rate: float = 1e-4,
     weight_decay: float = 1e-4,
-    lr_drop: int = 200,
 ):
     optimizer = optimizer_map[optimizer](
         model_params, lr=learning_rate, weight_decay=weight_decay

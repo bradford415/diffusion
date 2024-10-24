@@ -12,6 +12,14 @@ from diffusion.data.transforms import Unnormalize
 
 class DDPM(nn.Module):
     """DDPM model which is responsible for noising images and denoising with unet
+    
+    In general, diffusion models randomly apply noise to an image at certain timestep t and
+    the denoising model (unet) tries to predict the noise that was added (it does NOT predict the purified image).
+    The loss function compares the ground truth noise that was added to the predicted noise at the timestep,
+    therefore, the denoise model tries to learn how to predict the noise at any timestep. Once the model has
+    been trained, it can sample (inference) pure random gaussian noise and iteratively denoise the image
+    by the reverse defusion process  starting at the maximum timestep (normally T=1000). Once it reaches T=0,
+    an image should be generated.
 
     DDPM works in 3 steps:
         1. Forward process (algorithm 1):
@@ -52,7 +60,6 @@ class DDPM(nn.Module):
 
         # Input image channels (e.g., rgb = 3)
         self.channels = self.denoise_model.channels
-        self.self_condition = self.denoise_model.self_condition
 
         self.image_size = image_size
 
@@ -305,7 +312,7 @@ class DDPM(nn.Module):
         return model_mean, posterior_variance, posterior_log_variance, pred_x_start
 
     @torch.inference_mode()
-    def p_sample(self, sample_noise, timestep: int, x_self_cond=None):
+    def p_sample(self, sample_noise, timestep: int):
         """ " TODO
 
         Args:
@@ -397,28 +404,6 @@ class DDPM(nn.Module):
         )
 
         return images
-
-    @torch.inference_mode()
-    def interpolate(self, x1, x2, t=None, lam=0.5):
-        b, *_, device = *x1.shape, x1.device
-        t = default(t, self.num_timesteps - 1)
-
-        assert x1.shape == x2.shape
-
-        t_batched = torch.full((b,), t, device=device)
-        xt1, xt2 = map(lambda x: self.q_sample(x, t=t_batched), (x1, x2))
-
-        img = (1 - lam) * xt1 + lam * xt2
-
-        x_start = None
-
-        for i in tqdm(
-            reversed(range(0, t)), desc="interpolation sample time step", total=t
-        ):
-            self_cond = x_start if self.self_condition else None
-            img, x_start = self.p_sample(img, i, self_cond)
-
-        return img
 
     def noise_assignment(self, x_start, noise):
         x_start, noise = tuple(

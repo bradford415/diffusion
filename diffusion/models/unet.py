@@ -96,7 +96,7 @@ class Unet(nn.Module):
                 "Length of attn_levels should be the same as the length of dim_mults"
             )
 
-        # TODO
+        # TODO: comment
         attn_heads = (attn_heads,) * num_stages
         attn_ch = (attn_ch,) * num_stages
 
@@ -119,7 +119,7 @@ class Unet(nn.Module):
                     ResnetBlock(ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout),
                     ResnetBlock(ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout),
                     (
-                        # NOTE: this implementation uses the output of resnetblock as the dimension for attnetion; 
+                        # NOTE: this implementation uses the output of resnetblock as the dimension for attnetion;
                         #       the lucidrains implementation has a seperate parameter to control the attention dim
                         MultiheadedAttentionFM(
                             embed_ch=layer_attn_chh, num_heads=layer_attn_heads

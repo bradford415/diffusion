@@ -50,7 +50,7 @@ model_params:
   
 
 # Log the train progress every n steps
-logging_interval: 20
+logging_intervals: 20
 
 train:
 
@@ -91,7 +91,7 @@ reproducibility:
 learning_config_1:
   optimizer: "adam"
 
-  learning_rate: 8e-5 # Lucidrains uses 8e-5 in the README
+  learning_rate: 0.00008 # Lucidrains uses 8e-5 in the README
 
   # L2 regulartization penalty to add to the loss function: 
   weight_decay: 0.0
