@@ -106,7 +106,7 @@ def build_cifar(
         dataset = CIFAR100(**dataset_args)
     else:
         raise ValueError("Dataset not recognized, must be cifar10 or cifar100")
-
+    
     # TODO: manipulate dataset for debug mode
 
     return dataset

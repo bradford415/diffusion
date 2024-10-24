@@ -60,7 +60,7 @@ train:
   batch_size: 4
 
   # The step to start on; ddpm doesn't seem to use epochs and uses steps instead;
-  start_steps: 1
+  start_step: 1
   steps: 700000
 
   # Number of steps to checkpoint after; use 'null' to turn off checkpointing

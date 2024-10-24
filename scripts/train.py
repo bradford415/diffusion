@@ -108,11 +108,12 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
 
     dataset_name = base_config["dataset"]["name"]
     if dataset_name == "cifar10":
-        dataset_train = build_cifar("cifar10", "train", **common_dataset_kwargs)
-        dataset_val = build_cifar("cifar10", "test", **common_dataset_kwargs)
+        # do not return cifar labels
+        dataset_train, _ = build_cifar("cifar10", "train", **common_dataset_kwargs)
+        dataset_val, _ = build_cifar("cifar10", "test", **common_dataset_kwargs)
     elif dataset_name == "cifar100":
-        dataset_train = build_cifar("cifar10", "train", **common_dataset_kwargs)
-        dataset_val = build_cifar("cifar10", "val", **common_dataset_kwargs)
+        dataset_train, _ = build_cifar("cifar10", "train", **common_dataset_kwargs)
+        dataset_val, _ = build_cifar("cifar10", "val", **common_dataset_kwargs)
     else:
         ValueError(f"Dataset {dataset_name} not recognized.")
 

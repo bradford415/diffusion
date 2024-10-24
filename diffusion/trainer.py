@@ -70,10 +70,8 @@ class Trainer:
     def train(
         self,
         diffusion_model: nn.Module,
-        criterion: nn.Module,
         dataloader_train: data.DataLoader,
         optimizer: torch.optim.Optimizer,
-        scheduler: torch.optim.lr_scheduler,
         start_step: int = 1,
         steps: int = 700000,
         ckpt_steps: int = 1000,
@@ -86,15 +84,12 @@ class Trainer:
         Args:
             diffusion_model: the diffusion model (ddpm) to train; this class should contain the denoise_model
                              (unet) as an attribute
-            criterion: The loss function to use for training
-            dataloader_train: Torch dataloader to loop through the train dataset
-            dataloader_val: Torch dataloader to loop through the val dataset
+            dataloader_train: torch dataloader to loop through the train dataset
             optimizer: Optimizer which determines how to update the weights
-            scheduler: Scheduler which determines how to change the learning rate
             start_step: the step to start the training on; starting at 1 is a good default because it makes
                         checkpointing and calculations more intuitive
             steps: number of stpes to train for; unless starting from a checkpoint, this will be the number of epochs to train for
-            ckpt_steps: Save the model after n steps
+            ckpt_steps: save the model after n steps
         """
         ema_model = copy.deepcopy(diffusion_model)
 
@@ -116,10 +111,8 @@ class Trainer:
             # Train one epoch
             self._train_one_step(
                 diffusion_model,
-                criterion,
                 dataloader_train,
                 optimizer,
-                scheduler,
             )
 
             # Update the EMA model's weights
@@ -169,7 +162,13 @@ class Trainer:
             dataloader_train: Dataloader for the training set
             optimizer: Optimizer to update the models weights
         """
-        samples = next(dataloader_train).to(self.device)
+        samples = next(dataloader_train)
+        
+        # the torch cifar dataset returns the image and label; we don't need the label for diffusion
+        if len(samples) == 2:
+            samples = samples[0]
+            
+        samples = samples.to(self.device)
 
         # Forward pass through diffusion model; noises and denoises the image; diffusion_model contains the
         # the unet model for denoising
@@ -258,7 +257,7 @@ class Trainer:
             batch_arr.append(remainder)
         return batch_arr
 
-    def _cylce(dataloader: data.DataLoader):
+    def _cylce(self, dataloader: data.DataLoader):
         """This function infinitely cycles through a torch dataloader. This is useful
         when you want to train by steps rather than epochs.
 
