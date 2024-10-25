@@ -43,6 +43,7 @@ class DDPM(nn.Module):
         timesteps=1000,
         objective="pred_noise",
         variance_schedule="sigmoid",
+        device=torch.device("cpu")
     ):
         """
         Args:
@@ -86,6 +87,7 @@ class DDPM(nn.Module):
 
         # Define the variance schedule; minumum and maximum noise to add
         betas = variance_schedule_fn(timesteps)
+        betas = betas.to(device)
 
         # Define alphas for the forward process;
         # these are defined in the ddpm paper in equation 4 and the paragraph above
@@ -464,7 +466,7 @@ class DDPM(nn.Module):
             noise = torch.randn_like(img_start)
 
         # Noise a batch of images
-        noised_images = self.q_sample(x_start=img_start, t=timestep, noise=noise)
+        noised_images = self.q_sample(img_start=img_start, t=timestep, noise=noise)
 
         # Predict the noise added to the image
         model_out = self.denoise_model(noised_images, timestep)
@@ -512,10 +514,7 @@ class DDPM(nn.Module):
         # Batch of random (uniformly sampled) timesteps [0, num_timesteps); shape (b,)
         timestep = torch.randint(0, self.num_timesteps, (b,), device=device).long()
 
-        # Normalization is done in the dataset class so I don't think we need this
-        # img = self.normalize(img)
-        ################ START HRE###########
-        return self.p_losses(image, timestep)  # *args, **kwargs)
+        return self.p_losses(image, timestep)
 
 
 def extract_values(values: torch.Tensor, timestep: torch.Tensor, x_shape):
@@ -533,6 +532,7 @@ def extract_values(values: torch.Tensor, timestep: torch.Tensor, x_shape):
     Returns:
         A tensor of the extracted values; shape is (batch_size, 1, 1, 1, 1, ...) for broadcasting purposes
     """
+    breakpoint()
     # torch.gather visual: https://stackoverflow.com/questions/50999977/what-does-gather-do-in-pytorch-in-layman-terms
     out = torch.gather(values, index=timestep, dim=0).float()
 
