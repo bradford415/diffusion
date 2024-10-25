@@ -127,12 +127,6 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         **val_kwargs,
     )
 
-    # Initialize model
-    model = model_map[model_name](**model_config)
-    model.to(device)
-
-    ## TODO: Apply weights initialization
-
     # Extract the train arguments from base config
     train_args = base_config["train"]
 
@@ -140,16 +134,20 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     learning_config = train_args["learning_config"]
     learning_params = base_config[learning_config]
 
+    # Initalize models
+    ## TODO: Apply weights initialization in constructor maybe
+    denoise_model = Unet(**base_config["model_params"]["unet"]).to(device)
+    diffusion_model = DDPM(
+        denoise_model, device=device, **base_config["model_params"]["ddpm"]
+    ).to(device)
+
     # Initialize training objects
     optimizer = _init_training_objects(
-        model_params=model.parameters(),
+        model_params=diffusion_model.parameters(),
         optimizer=learning_params["optimizer"],
         learning_rate=learning_params["learning_rate"],
         weight_decay=learning_params["weight_decay"],
     )
-
-    denoise_model = Unet(**base_config["model_params"]["unet"])
-    diffusion_model = DDPM(denoise_model, device=device, **base_config["model_params"]["ddpm"])
 
     trainer = Trainer(
         output_path=str(output_path),
@@ -178,7 +176,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         "start_step": train_args["start_step"],
         "steps": train_args["steps"],
     }
-    
+
     # Train the ddpm model
     trainer.train(**trainer_args)
 

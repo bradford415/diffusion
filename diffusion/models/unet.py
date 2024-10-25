@@ -109,7 +109,7 @@ class Unet(nn.Module):
         for unet_layer, (
             (ch_in, ch_out),
             layer_attn_heads,
-            layer_attn_chh,
+            layer_attn_ch,
             attn,
         ) in enumerate(zip(in_out_ch, attn_heads, attn_ch, attn_levels)):
             # Whether to perform attention for the current Unet level;
@@ -122,7 +122,7 @@ class Unet(nn.Module):
                         # NOTE: this implementation uses the output of resnetblock as the dimension for attnetion;
                         #       the lucidrains implementation has a seperate parameter to control the attention dim
                         MultiheadedAttentionFM(
-                            embed_ch=layer_attn_chh, num_heads=layer_attn_heads
+                            embed_ch=ch_in, num_heads=layer_attn_heads
                         )
                         if attn
                         else nn.Identity()
@@ -168,8 +168,8 @@ class Unet(nn.Module):
         ) in enumerate(zip(in_out_ch, attn_heads, attn_ch, attn_levels)):
             level_layers = nn.ModuleList(
                 [
-                    # Mid layers use ch_out and down layers use ch_in therefore we need
-                    # ch_out+ch_in channels for channel-wise concatenation
+                    # Mid layers use ch_out and down layers use ch_in therefore we need ch_out+ch_in channels
+                    # for channel-wise concatenation; the concatenation is done in forward()
                     ResnetBlock(
                         ch_out + ch_in, ch_out, time_emb_dim=time_dim, dropout=dropout
                     ),
@@ -225,18 +225,20 @@ class Unet(nn.Module):
         for block1, block2, attn, downsample in self.down_layers:
             x = block1(x, time)
 
-            # Appends the feature maps so they can be concatenated during upsampling
+            # Append the feature maps so they can be concatenated during upsampling
             feature_maps.append(x)
 
             x = block2(x, time)
-            x = attn(x) + x
+
+            x = attn(x)  # residual is added in the attention module
+
             feature_maps.append(x)
 
             x = downsample(x)
 
         # Middle of Unet
         x = self.mid_block1(x, time)
-        x = self.mid_attn(x) + x
+        x = self.mid_attn(x)
         x = self.mid_block2(x, time)
 
         # Decoder layers
@@ -246,7 +248,7 @@ class Unet(nn.Module):
 
             x = torch.cat((x, feature_maps.pop()), dim=1)
             x = block2(x, time)
-            x = attn(x) + x
+            x = attn(x)
 
             x = upsample(x)
 

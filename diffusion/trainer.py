@@ -163,11 +163,11 @@ class Trainer:
             optimizer: Optimizer to update the models weights
         """
         samples = next(dataloader_train)
-        
+
         # the torch cifar dataset returns the image and label; we don't need the label for diffusion
         if len(samples) == 2:
             samples = samples[0]
-            
+
         samples = samples.to(self.device)
 
         # Forward pass through diffusion model; noises and denoises the image; diffusion_model contains the
@@ -216,9 +216,7 @@ class Trainer:
             generated_images.append(ema_model.sample_generation(batch_size=batch_size))
 
         for image_set in enumerate(generated_images):
-            save_gen_images(
-                image_set, self.num_eval_samples**2, "generated_images.png"
-            )
+            save_gen_images(image_set, self.num_eval_samples**2, "generated_images.png")
 
         # TODO: Calculate fid score
         return None

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -107,7 +107,7 @@ class Attention(nn.Module):
         """Compute attention on q, k, & v
 
         q, k, v should be a minimum of 3 dimensions such as (batch, seq_len, embed_dim)
-        or (batch, num_heads, seq_len, head_dim); attention will be computed on the last 2 dims
+        or (batch, num_heads, seq_len, head_dim) for mha; attention will be computed on the last 2 dims
 
         Args:
             queries: Input tensor to compute the attention of
@@ -121,7 +121,7 @@ class Attention(nn.Module):
         """
 
         # Used to scale the qk dot product
-        sqrt_dim = torch.sqrt(k.shape[-1])
+        sqrt_dim = torch.sqrt(torch.tensor(k.shape[-1]))
 
         # (batch_size, num_heads, q_len, k_len)
         scores = torch.matmul(q, k.transpose(-2, -1)) / sqrt_dim
@@ -139,10 +139,13 @@ class Attention(nn.Module):
 
 
 class MultiheadedAttentionFM(nn.Module):
-    """Multiheaded Attention with feature maps
+    """Multiheaded Self-Attention with feature maps; this is self attention because the forward() only takes 1 input so
+    it would be performing attention on itself; for cross-attention (multiple inputs), simply create another module
+    which allows different q, k, v; the reason its not done here is because it just worked better for the use case
+    and makes the code a little cleaner (:
 
-    This is essentially the same as MHA but the h,w features of the
-    feature maps need to be flattened first
+    This is essentially the same as MHA but the h, w features of the
+    feature maps need to be flattened first **idk what I was writing here**
 
     This implementation is based on: https://github.com/w86763777/pytorch-ddpm/blob/f804ccbd58a758b07f79a3b9ecdfb1beb67258f6/model.py#L78
     """
@@ -190,20 +193,17 @@ class MultiheadedAttentionFM(nn.Module):
         #     [Attention(head_dim, head_size, block_size) for _ in range(num_heads)]
         # )
 
-    def forward(self, queries: torch.Tensor, keys: torch.Tensor, values: torch.Tensor):
+    def forward(self, input: torch.Tensor):
         """ "Forward pass through Multiheaded Attention;
         for self-attention the queries, keys, and values should be the same
 
         Args:
-            queries: Input tensor to compute the attention of
-            keys: Input tensor to compute the attention of
-            values: Input tensor to compute the context of; for self-attention this should be the same
-                    as q & v
+            input: Input tensor to compute self-attention on (b, c, h, w)
         """
         # Project q, k, & v (batch, embed_ch, height, width)
-        queries = self.q_proj(queries)
-        keys = self.k_proj(keys)
-        values = self.v_proj(values)
+        queries = self.q_proj(input)
+        keys = self.k_proj(input)
+        values = self.v_proj(input)
 
         batch, embed_ch, height, width = queries.shape
 
@@ -221,7 +221,7 @@ class MultiheadedAttentionFM(nn.Module):
             keys.shape[0], keys.shape[1], self.num_heads, self.head_dim
         ).transpose(1, 2)
         value_heads = values.view(
-            values.shape, values.shape[1], self.num_heads, self.head_dim
+            values.shape[0], values.shape[1], self.num_heads, self.head_dim
         ).transpose(1, 2)
 
         # Compute attention on all heads
@@ -242,7 +242,7 @@ class MultiheadedAttentionFM(nn.Module):
         # Final projection of MHA
         attention_proj = self.final_proj(attention)
 
-        return attention_proj
+        return attention_proj + input
 
 
 class ResnetBlock(nn.Module):
@@ -265,7 +265,7 @@ class ResnetBlock(nn.Module):
         if time_emb_dim is not None:
             self.time_proj = nn.Sequential(
                 nn.SiLU(),
-                nn.Linear(time_emb_dim, out_ch * 2),  # nn.Linear(time_emb_dim, out_ch)
+                nn.Linear(time_emb_dim, out_ch),  # nn.Linear(time_emb_dim, out_ch)
             )
 
         # NOTE: It looks like the original implementation reverses the order i.e., conv2d last: https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L45

@@ -32,25 +32,47 @@ model_params:
   unet:
     dim: 64
     dim_mults: [1, 2, 4, 8]
-    #flash_attn: True
+    image_ch: 3
+    dropout: 0.0
+    attn_ch: 128
+    attn_heads: 4
+    attn_levels: [False, False, False, True]
+
+  # Params for the full ddpm model
+  ddpm:
+    image_size: 32
+    timesteps: 1000
+    objective: "pred_noise"
+    variance_schedule: sigmoid
+
+  # ema decay TODO write more on this
+  ema_decay: 0.995
+  
+
+# Log the train progress every n steps
+logging_intervals: 20
 
 train:
 
-  # Configurations for learning parameters such as the optmizier and lr scheduler
+  # Configurations for learning such as the optmizier and lr scheduler
   learning_config: "learning_config_1"
 
   batch_size: 4
 
-  # Various epochs used during training
-  epochs:
+  # The step to start on; ddpm doesn't seem to use epochs and uses steps instead;
+  start_step: 1
+  steps: 700000
 
-    # The epoch to start on; starting at 1 makes calculations for logging and checkpointing more intuitive
-    start_epoch: 1
-    epochs: 200
+  # Number of steps to checkpoint after; use 'null' to turn off checkpointing
+  ckpt_steps: 1000
 
-    # Number of epochs to checkpoint after; use 'null' to turn off checkpointing
-    ckpt_epochs: 10
+  # Number of steps to evaluate after
+  eval_intervals: 40
 
+  # Number of samples to generate during evaluation
+  num_eval_samples: 25
+
+# Might remove if not used
 validation:
   batch_size: 4
 
@@ -60,29 +82,18 @@ cuda:
   # List of GPU devices to use
   gpus: [0]
 
-# Logging parameters
-logging:
-
-  # Log the train progress every n steps
-  train_steps_freq: 20
-
 # Reproducibility information
 reproducibility:
   seed: 42
 
 
 # Params for training objects
-
-
-# Adam optimizer parameters defined here: https://github.com/eriklindernoren/PyTorch-YOLOv3/blob/master/config/yolov3.cfg
 learning_config_1:
   optimizer: "adam"
 
-  learning_rate: 0.0001 #1e-4
+  learning_rate: 0.00008 # Lucidrains uses 8e-5 in the README
 
   # L2 regulartization penalty to add to the loss function: 
-  weight_decay: 0.0005
-
-  lr_scheduler: "lambda_lr"
+  weight_decay: 0.0
 
 

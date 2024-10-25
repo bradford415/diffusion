@@ -12,7 +12,7 @@ from diffusion.data.transforms import Unnormalize
 
 class DDPM(nn.Module):
     """DDPM model which is responsible for noising images and denoising with unet
-    
+
     In general, diffusion models randomly apply noise to an image at certain timestep t and
     the denoising model (unet) tries to predict the noise that was added (it does NOT predict the purified image).
     The loss function compares the ground truth noise that was added to the predicted noise at the timestep,
@@ -43,7 +43,7 @@ class DDPM(nn.Module):
         timesteps=1000,
         objective="pred_noise",
         variance_schedule="sigmoid",
-        device=torch.device("cpu")
+        device=torch.device("cpu"),
     ):
         """
         Args:
@@ -532,7 +532,6 @@ def extract_values(values: torch.Tensor, timestep: torch.Tensor, x_shape):
     Returns:
         A tensor of the extracted values; shape is (batch_size, 1, 1, 1, 1, ...) for broadcasting purposes
     """
-    breakpoint()
     # torch.gather visual: https://stackoverflow.com/questions/50999977/what-does-gather-do-in-pytorch-in-layman-terms
     out = torch.gather(values, index=timestep, dim=0).float()
 
