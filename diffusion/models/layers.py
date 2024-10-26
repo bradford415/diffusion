@@ -119,7 +119,6 @@ class Attention(nn.Module):
         Returns:
            The context vectors (batch_size, seq_len, d_model)
         """
-
         # Used to scale the qk dot product
         sqrt_dim = torch.sqrt(torch.tensor(k.shape[-1]))
 
@@ -176,13 +175,13 @@ class MultiheadedAttentionFM(nn.Module):
 
         # NOTE: might need to make bias true? I don't think so though
         self.q_proj = nn.Conv2d(
-            embed_ch, embed_ch, kernel_size=1, stride=1, padding=1, bias=False
+            embed_ch, embed_ch, kernel_size=1, stride=1, padding=0, bias=False
         )
         self.k_proj = nn.Conv2d(
-            embed_ch, embed_ch, kernel_size=1, stride=1, padding=1, bias=False
+            embed_ch, embed_ch, kernel_size=1, stride=1, padding=0, bias=False
         )
         self.v_proj = nn.Conv2d(
-            embed_ch, embed_ch, kernel_size=1, stride=1, padding=1, bias=False
+            embed_ch, embed_ch, kernel_size=1, stride=1, padding=0, bias=False
         )
 
         self.attention = Attention()
@@ -200,10 +199,12 @@ class MultiheadedAttentionFM(nn.Module):
         Args:
             input: Input tensor to compute self-attention on (b, c, h, w)
         """
+        norm_input = self.group_norm(input)
+        
         # Project q, k, & v (batch, embed_ch, height, width)
-        queries = self.q_proj(input)
-        keys = self.k_proj(input)
-        values = self.v_proj(input)
+        queries = self.q_proj(norm_input)
+        keys = self.k_proj(norm_input)
+        values = self.v_proj(norm_input)
 
         batch, embed_ch, height, width = queries.shape
 
@@ -241,6 +242,8 @@ class MultiheadedAttentionFM(nn.Module):
 
         # Final projection of MHA
         attention_proj = self.final_proj(attention)
+        
+        assert attention_proj.shape == input.shape
 
         return attention_proj + input
 
@@ -272,14 +275,14 @@ class ResnetBlock(nn.Module):
         #       but many implementations are written differently and more often Conv2d seems to be first
         self.block1 = nn.Sequential(
             nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
+            nn.GroupNorm(32, out_ch),
             nn.SiLU(),
-            nn.GroupNorm(32, in_ch),
             nn.Dropout(dropout),
         )
         self.block2 = nn.Sequential(
             nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
-            nn.SiLU(),
             nn.GroupNorm(32, out_ch),
+            nn.SiLU(),
             nn.Dropout(dropout),
         )
 

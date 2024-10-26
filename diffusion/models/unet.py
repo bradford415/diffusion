@@ -109,7 +109,7 @@ class Unet(nn.Module):
         for unet_layer, (
             (ch_in, ch_out),
             layer_attn_heads,
-            layer_attn_ch,
+            layer_attn_ch, # currently this isn't used; attn_dim is just the output_dim of the ResBlocks
             attn,
         ) in enumerate(zip(in_out_ch, attn_heads, attn_ch, attn_levels)):
             # Whether to perform attention for the current Unet level;
@@ -145,7 +145,7 @@ class Unet(nn.Module):
             mid_dim, mid_dim, time_emb_dim=time_dim, dropout=dropout
         )
         self.mid_attn = MultiheadedAttentionFM(
-            embed_ch=attn_ch[-1], num_heads=attn_heads[-1]
+            embed_ch=mid_dim, num_heads=attn_heads[-1]
         )
         self.mid_block2 = ResnetBlock(
             mid_dim, mid_dim, time_emb_dim=time_dim, dropout=dropout
@@ -208,7 +208,7 @@ class Unet(nn.Module):
 
         Args:
             x: Preprocessed image input to unet (b, c, h, w)
-            time: Noise time embeddings (b, dim) TODO verify this shape
+            time: Noise time embeddings (b, time_dim)
         """
 
         # TODO: Maybe put input image divisble check
@@ -242,8 +242,9 @@ class Unet(nn.Module):
         x = self.mid_block2(x, time)
 
         # Decoder layers
-        for block1, block2, attn, upsample in self.self.up_layers:
+        for block1, block2, attn, upsample in self.up_layers:
             x = torch.cat((x, feature_maps.pop()), dim=1)
+
             x = block1(x, time)
 
             x = torch.cat((x, feature_maps.pop()), dim=1)
