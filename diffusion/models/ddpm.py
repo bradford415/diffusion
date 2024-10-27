@@ -368,12 +368,14 @@ class DDPM(nn.Module):
             denoised_img, x_start = self.p_sample(sample_noise, timestep)
             images.append(denoised_img)
 
-        ret = denoised_img if not return_all_timesteps else torch.stack(images, dim=1)
+        x_0 = denoised_img if not return_all_timesteps else torch.stack(images, dim=1)
+
+        x_0 = torch.clip(x_0, -1.0, 1.0)
 
         # unnormalizes the generated data and converts it to a PIL image;
         # see data.transforms.Unnormalize for more details
         #ret = self.unnormalize(ret)
-        return ret
+        return x_0
 
     @torch.inference_mode()
     def sample_generation(self, batch_size=16):
