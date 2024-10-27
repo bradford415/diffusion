@@ -73,6 +73,9 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
 
     log.info("Initializing...\n")
 
+
+    log.info("writing outputs to %s", str(output_path))
+
     # Apply reproducibility seeds
     reproduce.reproducibility(**base_config["reproducibility"])
 
@@ -80,10 +83,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     train_kwargs = {"batch_size": base_config["train"]["batch_size"], "shuffle": True}
-    val_kwargs = {
-        "batch_size": base_config["validation"]["batch_size"],
-        "shuffle": False,
-    }
+    val_kwargs = {"batch_size": base_config["train"]["batch_size"], "shuffle": False}
 
     if use_cuda:
         log.info("Using %d GPU(s): ", len(base_config["cuda"]["gpus"]))
@@ -111,8 +111,8 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         dataset_train = build_cifar("cifar10", "train", **common_dataset_kwargs)
         dataset_val = build_cifar("cifar10", "test", **common_dataset_kwargs)
     elif dataset_name == "cifar100":
-        dataset_train = build_cifar("cifar10", "train", **common_dataset_kwargs)
-        dataset_val = build_cifar("cifar10", "val", **common_dataset_kwargs)
+        dataset_train = build_cifar("cifar100", "train", **common_dataset_kwargs)
+        dataset_val = build_cifar("cifar100", "test", **common_dataset_kwargs)
     else:
         ValueError(f"Dataset {dataset_name} not recognized.")
 
@@ -121,6 +121,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         drop_last=True,
         **train_kwargs,
     )
+    
     dataloader_val = DataLoader(
         dataset_val,
         drop_last=True,
@@ -140,6 +141,8 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     diffusion_model = DDPM(
         denoise_model, device=device, **base_config["model_params"]["ddpm"]
     ).to(device)
+    
+    reproduce.model_info(denoise_model)
 
     # Initialize training objects
     optimizer = _init_training_objects(
@@ -157,6 +160,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         eval_intervals=train_args["eval_intervals"],
         num_eval_samples=train_args["num_eval_samples"],
         logging_intervals=base_config["logging_intervals"],
+        eval_batch_size=train_args["sampling_batch_size"]
     )
 
     # Save configuration files
@@ -171,7 +175,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         "diffusion_model": diffusion_model,
         # "criterion": criterion,
         "dataloader_train": dataloader_train,
-        # "dataloader_val": dataloader_val,
+        "dataloader_val": dataloader_val,
         "optimizer": optimizer,
         "start_step": train_args["start_step"],
         "steps": train_args["steps"],

@@ -1,6 +1,6 @@
 import math
 import random
-from typing import Tuple
+from typing import Tuple, List, Union
 
 import torch
 from torch import nn
@@ -39,7 +39,7 @@ class DDPM(nn.Module):
         self,
         denoise_model,
         *,
-        image_size: Tuple,
+        image_size: Union[List, Tuple],
         timesteps=1000,
         objective="pred_noise",
         variance_schedule="sigmoid",
@@ -186,14 +186,9 @@ class DDPM(nn.Module):
             pred_noise: predicted noise from the unet model (b, c, h, w)
 
         """
-        image_term = (
-            extract_values(self.sqrt_recip_alphas_cumprod, timestep, x_t.shape) * x_t
-        )
-        noise_term = (
-            extract_values(self.sqrt_recipm1_alphas_cumprod, timestep, x_t.shape)
-            * pred_noise
-        )
-        return image_term - noise_term
+        assert x_t.shape == pred_noise.shape
+
+        return extract_values(self.sqrt_recip_alphas_cumprod, timestep, x_t.shape) * x_t - extract_values(self.sqrt_recipm1_alphas_cumprod, timestep, x_t.shape) * pred_noise
 
     # TODO: Implement at a later point
     def predict_noise_from_start(self, x_t, t, x0):
@@ -264,16 +259,10 @@ class DDPM(nn.Module):
         # Since this is a unet model the input and output shape should be the same
         assert sampled_noise.shape == model_output.shape
 
-        # Construct an image from the predicted noise
-        if self.objective == "pred_noise":
+        # TODO comment
+        if self.objective == "pred_noise": # noise is also epsilon
             pred_noise = model_output
             x_start = self.predict_start_from_noise(sampled_noise, timestep, pred_noise)
-
-            # Seems to only be used for ddim TODO remove this if not used
-            if clip_x_start and rederive_pred_noise:
-                pred_noise = self.predict_noise_from_start(
-                    sampled_noise, timestep, x_start
-                )
 
         # TODO implement x0 and v at a later point
         elif self.objective == "pred_x0":
@@ -309,13 +298,13 @@ class DDPM(nn.Module):
 
         # Calculates the posterior_mean & extracts posterior_variance, posterior_log_variance
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(
-            x_start=pred_x_start, x_t=sampled_noise, t=timestep
+            x_start=pred_x_start, x_t=sampled_noise, timestep=timestep
         )
         return model_mean, posterior_variance, posterior_log_variance, pred_x_start
 
     @torch.inference_mode()
     def p_sample(self, sample_noise, timestep: int):
-        """ " TODO
+        """TODO
 
         Args:
             sample_noise: a batch of noise at a timestep used to generate images (b, c, h, w);
@@ -327,14 +316,14 @@ class DDPM(nn.Module):
             1. the predicted image at the previous timestep x_{t-1}
             2.
         """
-        b, c, h, w = (noise.shape,)
+        b, c, h, w = sample_noise.shape
 
         # repeat the timestep for the batch size (b,)
         batched_times = torch.full((b,), timestep, device=self.device, dtype=torch.long)
 
         # Calculate the posterior mean and grab the variances computed at the start
         model_mean, _, model_log_variance, x_start = self.p_mean_variance(
-            sample_noise=sample_noise, timestep=batched_times, clip_denoised=True
+            sampled_noise=sample_noise, timestep=batched_times, clip_denoised=True
         )
 
         # Generate random noise, z, to add to the mean (b, c, h, w); algorithm 2 line 4
@@ -354,7 +343,7 @@ class DDPM(nn.Module):
         loops for (num_timesteps, 0]
 
         Args:
-            shape: shape to randomly sample noise of (b, c, h, w)'
+            shape: shape to randomly sample noise of (b, c, h, w)
             return_all_timesteps: whether to return the denoised sample at all timesteps;
                                   if false only the final denoised image is returned i.e., t=0
 
@@ -373,8 +362,8 @@ class DDPM(nn.Module):
         # Loop from (num_timesteps, 0]
         for timestep in tqdm(
             reversed(range(0, self.num_timesteps)),
-            desc="sampling loop time step",
-            total=self.num_timesteps,
+            desc="Denoising samples",
+            total=self.num_timesteps, ncols=100
         ):
             denoised_img, x_start = self.p_sample(sample_noise, timestep)
             images.append(denoised_img)
@@ -383,7 +372,7 @@ class DDPM(nn.Module):
 
         # unnormalizes the generated data and converts it to a PIL image;
         # see data.transforms.Unnormalize for more details
-        ret = self.unnormalize(ret)
+        #ret = self.unnormalize(ret)
         return ret
 
     @torch.inference_mode()

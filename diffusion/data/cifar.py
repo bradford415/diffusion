@@ -9,17 +9,12 @@ from torchvision.datasets import CIFAR10, CIFAR100
 
 from diffusion.data.transforms import Unnormalize
 
-# TODO: find a better place to put this (maybe return with make_cifa_transforms?)
-reverse_transforms = T.Compose(
+
+unnormalize = T.Compose(
     [
-        Unnormalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),  # [-1, 1] -> [0, 1]
-        T.Lambda(lambda t: t.permute(1, 2, 0)),  # CHW to HWC
-        T.Lambda(lambda t: t * 255.0),  # [0, 1] -> [0, 255]
-        T.Lambda(lambda t: t.numpy().astype(np.uint8)),
-        T.ToPILImage(),
+        Unnormalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
     ]
 )
-
 
 def make_cifar_transforms(
     dataset_split,

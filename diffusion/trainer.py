@@ -13,6 +13,8 @@ from torchvision.transforms import functional as F
 from tqdm import tqdm
 
 from diffusion.visualize import save_gen_images
+from diffusion.data.transforms import reverse_transforms
+
 
 log = logging.getLogger(__name__)
 
@@ -28,8 +30,8 @@ class Trainer:
         ema_decay: float = 0.9999,
         ckpt_steps: int = 1000,
         eval_intervals: int = 40,
-        eval_batch_size: int = 4,
-        num_eval_samples: int = 25,
+        eval_batch_size: int = 16,
+        num_eval_samples: int = 16,
         logging_intervals: int = 20,
     ):
         """Constructor for the Trainer class
@@ -50,7 +52,7 @@ class Trainer:
 
         self.device = device
 
-        self.output_paths = output_path
+        self.output_path = output_path
 
         self.ckpt_steps = ckpt_steps
 
@@ -71,6 +73,7 @@ class Trainer:
         self,
         diffusion_model: nn.Module,
         dataloader_train: data.DataLoader,
+        dataloader_val: data.DataLoader,
         optimizer: torch.optim.Optimizer,
         start_step: int = 1,
         steps: int = 700000,
@@ -85,6 +88,7 @@ class Trainer:
             diffusion_model: the diffusion model (ddpm) to train; this class should contain the denoise_model
                              (unet) as an attribute
             dataloader_train: torch dataloader to loop through the train dataset
+            dataloader_train: torch dataloader to loop through the val dataset
             optimizer: Optimizer which determines how to update the weights
             start_step: the step to start the training on; starting at 1 is a good default because it makes
                         checkpointing and calculations more intuitive
@@ -95,7 +99,8 @@ class Trainer:
 
         # Infinitely cycle through the dataloader to train by steps
         # i.e., once all the samples have been sampled, it will start over again
-        dataloader_train = self._cylce(dataloader_train)
+        dataloader_train = self._cycle(dataloader_train)
+        dataloader_val = self._cycle(dataloader_val)
 
         log.info("\nTraining started\n")
         total_train_start_time = time.time()
@@ -109,27 +114,32 @@ class Trainer:
             diffusion_model.train()  # TODO: I think this will also set the unet model to train mode but I should verify
 
             # Train one epoch
-            self._train_one_step(
+            train_loss = self._train_one_step(
                 diffusion_model,
                 dataloader_train,
                 optimizer,
             )
+            
+            if step % self.log_intervals == 0:
+                val_loss = self._evaluate_one_step(diffusion_model, dataloader_val)
+                log.info("step: %4d \ttrain loss: %4.5f \tval loss: %4.5f", step, train_loss, val_loss)
 
             # Update the EMA model's weights
             self._calculate_ema(diffusion_model, ema_model, self.ema_decay)
 
             # Evaluate the diffusion model at a specified interval
-            if step % self.eval_interval == 0:
+            if step % self.eval_intervals == 0:
                 # Evaluate the model on the validation set
-                log.info("\nEvaluating — step %d", step)
-                ######################## TODO start here  and fill out evaluate
-                metrics_output = self._evaluate(ema_model)
+                log.info("sampling — step %d", step)
+                
+                # Generate images
+                self._sample(ema_model, step)
 
             # TODO: also save and replace best model based on fid score
 
             # Save the model every ckpt_steps
-            if steps % ckpt_steps == 0:
-                ckpt_path = self.output_paths["output_dir"] / f"checkpoint{step:07}.pt"
+            if ckpt_steps == 0:
+                ckpt_path = Path(self.output_path) / f"checkpoint{step:07}.pt"
                 self._save_model(
                     diffusion_model,
                     optimizer,
@@ -191,12 +201,42 @@ class Trainer:
 
         optimizer.step()
         optimizer.zero_grad()
+        
+        return loss
 
     @torch.inference_mode
-    def _evaluate(
+    def _evaluate_one_step(
+        self,
+        diffusion_model: nn.Module,
+        dataloader_val: Iterable,
+    ):
+        """TODO
+
+        Args:
+            model: Model to train
+            dataloader_train: Dataloader for the validation set
+        """
+        diffusion_model.eval()
+        samples = next(dataloader_val)
+
+        # the torch cifar dataset returns the image and label; we don't need the label for diffusion
+        if len(samples) == 2:
+            samples = samples[0]
+
+        samples = samples.to(self.device)
+
+        # Forward pass through diffusion model; noises and denoises the image; diffusion_model contains the
+        # the unet model for denoising
+        loss = diffusion_model(samples)
+        
+        return loss
+
+    @torch.inference_mode
+    def _sample(
         self,
         ema_model: nn.Module,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        current_step: int,
+    ):
         """Denoises pure noise to generate and save images
 
         Args:
@@ -207,21 +247,34 @@ class Trainer:
         """
         # Eval is only performed with the ema model
         ema_model.eval()
+        
+        # TODO
+        gen_images_output = Path(self.output_path) / "samples" / f"step_{current_step}"
+        gen_images_output.mkdir(parents=True, exist_ok=True)
 
         # Split the number of samples to generate into a list of batches
-        eval_batch_sizes = self._num_samples_to_batches(self.num_eval_samples)
-
+        eval_batch_sizes = self._num_samples_to_batches(self.num_eval_samples)\
+            
+        log.info("Generating %d images using the following batch sizes: %s", self.num_eval_samples, eval_batch_sizes)
         generated_images = []
-        for batch_size in eval_batch_sizes:
+        for index, batch_size in enumerate(eval_batch_sizes):
+            log.info("Processing batch %d/%d", index+1, len(eval_batch_sizes))
             generated_images.append(ema_model.sample_generation(batch_size=batch_size))
 
-        for image_set in enumerate(generated_images):
-            save_gen_images(image_set, self.num_eval_samples**2, "generated_images.png")
+        all_images = torch.cat(generated_images, dim=0)
+        
+        # # Convert generated images to viewable shape
+        # all_images = all_images.permute(0, 2, 3, 1) # (b, c, h, w) -> (b, h, w, c)
+        # all_images *= 255.0
+        # all_images = all_images.detach().cpu().numpy().astype(np.uint8)
+        
+        all_images = reverse_transforms(all_images)
+        
+        #for index, image_set in enumerate(generated_images):
+        save_gen_images(all_images, self.num_eval_samples**0.5, str(gen_images_output / "generated_images.png"))
 
-        # TODO: Calculate fid score
-        return None
 
-    def _calculate_ema(source_model: nn.Module, target_model: nn.Module, decay: float):
+    def _calculate_ema(self, source_model: nn.Module, target_model: nn.Module, decay: float):
         """Calculate the exponential moving average (ema) from a source model's weights
         and the current target_model's weights; the updated weights are stored in target_model
 
@@ -255,7 +308,7 @@ class Trainer:
             batch_arr.append(remainder)
         return batch_arr
 
-    def _cylce(self, dataloader: data.DataLoader):
+    def _cycle(self, dataloader: data.DataLoader):
         """This function infinitely cycles through a torch dataloader. This is useful
         when you want to train by steps rather than epochs.
 
@@ -301,6 +354,7 @@ class Trainer:
             raise ValueError("split must either be in valid_splits")
 
         samples, targets = next(iter(dataloader))
+        
         plots.visualize_norm_img_tensors(
             samples,
             targets,

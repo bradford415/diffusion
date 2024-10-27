@@ -40,7 +40,7 @@ model_params:
 
   # Params for the full ddpm model
   ddpm:
-    image_size: 32
+    image_size: [32, 32]
     timesteps: 1000
     objective: "pred_noise"
     variance_schedule: sigmoid
@@ -57,24 +57,26 @@ train:
   # Configurations for learning such as the optmizier and lr scheduler
   learning_config: "learning_config_1"
 
-  batch_size: 4
+  batch_size: 256
 
   # The step to start on; ddpm doesn't seem to use epochs and uses steps instead;
   start_step: 1
   steps: 700000
 
   # Number of steps to checkpoint after; use 'null' to turn off checkpointing
-  ckpt_steps: 1000
+  ckpt_steps: 5000
 
   # Number of steps to evaluate after
-  eval_intervals: 40
+  eval_intervals: 2000
 
   # Number of samples to generate during evaluation
-  num_eval_samples: 25
+  num_eval_samples: 16
 
-# Might remove if not used
+  # Number of samples to pass through the model during sampling
+  sampling_batch_size: 16
+
 validation:
-  batch_size: 4
+  
 
 # GPU parameters
 cuda:

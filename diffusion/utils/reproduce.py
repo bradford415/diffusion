@@ -1,6 +1,7 @@
 # Utility functions to reproduce the results from experimentss
 import json
 import random
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Dict
@@ -8,6 +9,14 @@ from typing import Dict
 import numpy as np
 import torch
 
+log = logging.getLogger(__name__)
+
+
+def model_info(model):
+    model_size = 0
+    for param in model.parameters():
+        model_size += param.data.nelement()
+    log.info("Model params: %.2f M", (model_size / 1024 / 1024))
 
 def reproducibility(seed: int) -> None:
     """Set the seed for the sources of randomization. This allows for more reproducible results"""

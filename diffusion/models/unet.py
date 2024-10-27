@@ -189,7 +189,7 @@ class Unet(nn.Module):
 
             # Upsample feature maps by a factor of 2 if not the last unet decoder level
             if unet_layer != (num_resolutions - 1):
-                level_layers.append(Upsample(ch_in, ch_out))
+                level_layers.append(Upsample(ch_out, ch_in))
             else:
                 level_layers.append(nn.Conv2d(ch_out, ch_in, 3, padding=1))
 
@@ -254,7 +254,7 @@ class Unet(nn.Module):
             x = upsample(x)
 
         # TODO: remove assert once I know it passes
-        assert torch.allclose(feature_maps[0] == r)
+        assert torch.allclose(feature_maps[0], r)
 
         x = torch.cat((x, feature_maps.pop()), dim=1)
         x = self.final_res_block(x, time)
