@@ -10,11 +10,9 @@ import torch
 from torch import nn
 from torch.utils import data
 from torchvision.transforms import functional as F
-from tqdm import tqdm
 
-from diffusion.visualize import save_gen_images
 from diffusion.data.transforms import reverse_transforms
-
+from diffusion.visualize import save_gen_images
 
 log = logging.getLogger(__name__)
 
@@ -115,14 +113,17 @@ class Trainer:
 
             # Train one epoch
             train_loss = self._train_one_step(
-                diffusion_model,
-                dataloader_train,
-                optimizer,
+                diffusion_model, dataloader_train, optimizer, step
             )
-            
+
             if step % self.log_intervals == 0:
                 val_loss = self._evaluate_one_step(diffusion_model, dataloader_val)
-                log.info("step: %4d \ttrain loss: %4.5f \tval loss: %4.5f", step, train_loss, val_loss)
+                log.info(
+                    "step: %4d \ttrain loss: %4.5f \tval loss: %4.5f",
+                    step,
+                    train_loss,
+                    val_loss,
+                )
 
             # Update the EMA model's weights
             self._calculate_ema(diffusion_model, ema_model, self.ema_decay)
@@ -131,7 +132,7 @@ class Trainer:
             if step % self.eval_intervals == 0:
                 # Evaluate the model on the validation set
                 log.info("sampling — step %d", step)
-                
+
                 # Generate images
                 self._sample(ema_model, step)
 
@@ -164,6 +165,7 @@ class Trainer:
         diffusion_model: nn.Module,
         dataloader_train: Iterable,
         optimizer: torch.optim.Optimizer,
+        current_step: int,
     ):
         """Train one step (one batch of samples)
 
@@ -177,6 +179,10 @@ class Trainer:
         # the torch cifar dataset returns the image and label; we don't need the label for diffusion
         if len(samples) == 2:
             samples = samples[0]
+
+        # Visualize a batch of images to verify the agumentations are correct
+        if current_step == 1:
+            self._visualize_batch(current_step)
 
         samples = samples.to(self.device)
 
@@ -201,7 +207,7 @@ class Trainer:
 
         optimizer.step()
         optimizer.zero_grad()
-        
+
         return loss
 
     @torch.inference_mode
@@ -228,7 +234,7 @@ class Trainer:
         # Forward pass through diffusion model; noises and denoises the image; diffusion_model contains the
         # the unet model for denoising
         loss = diffusion_model(samples)
-        
+
         return loss
 
     @torch.inference_mode
@@ -243,38 +249,45 @@ class Trainer:
             ema model: model to sample from; typically only the ema model is used
 
         Returns:
-            A Tuple of the (prec, rec, ap, f1, and class) per class
         """
         # Eval is only performed with the ema model
         ema_model.eval()
-        
+
         # TODO
         gen_images_output = Path(self.output_path) / "samples" / f"step_{current_step}"
         gen_images_output.mkdir(parents=True, exist_ok=True)
 
         # Split the number of samples to generate into a list of batches
-        eval_batch_sizes = self._num_samples_to_batches(self.num_eval_samples)\
-            
-        log.info("Generating %d images using the following batch sizes: %s", self.num_eval_samples, eval_batch_sizes)
+        eval_batch_sizes = self._num_samples_to_batches(self.num_eval_samples)
+        log.info(
+            "Generating %d images using the following batch sizes: %s",
+            self.num_eval_samples,
+            eval_batch_sizes,
+        )
         generated_images = []
         for index, batch_size in enumerate(eval_batch_sizes):
-            log.info("Processing batch %d/%d", index+1, len(eval_batch_sizes))
+            log.info("Processing batch %d/%d", index + 1, len(eval_batch_sizes))
             generated_images.append(ema_model.sample_generation(batch_size=batch_size))
 
         all_images = torch.cat(generated_images, dim=0)
-        
+
         # # Convert generated images to viewable shape
         # all_images = all_images.permute(0, 2, 3, 1) # (b, c, h, w) -> (b, h, w, c)
         # all_images *= 255.0
         # all_images = all_images.detach().cpu().numpy().astype(np.uint8)
-        
-        all_images = reverse_transforms(all_images)
-        
-        #for index, image_set in enumerate(generated_images):
-        save_gen_images(all_images, self.num_eval_samples**0.5, str(gen_images_output / "generated_images.png"))
 
+        # all_images = reverse_transforms(all_images)
 
-    def _calculate_ema(self, source_model: nn.Module, target_model: nn.Module, decay: float):
+        # for index, image_set in enumerate(generated_images):
+        save_gen_images(
+            all_images,
+            self.num_eval_samples**0.5,
+            str(gen_images_output / "generated_images.png"),
+        )
+
+    def _calculate_ema(
+        self, source_model: nn.Module, target_model: nn.Module, decay: float
+    ):
         """Calculate the exponential moving average (ema) from a source model's weights
         and the current target_model's weights; the updated weights are stored in target_model
 
@@ -339,25 +352,15 @@ class Trainer:
         )
 
     def _visualize_batch(
-        self, dataloader: data.DataLoader, split: str, class_names: List[str]
+        self, samples: torch.Tensor
     ):
         """Visualize a batch of images after data augmentation; sthis helps manually verify
         the data augmentations are working as intended on the images and boxes
 
         Args:
-            dataloader: Train or val dataloader
-            split: "train" or "val"
-            class_names: List of class names in the ontology
+            samples: tensor of a batch of images (b, c, h, w)
         """
-        valid_splits = {"train", "val"}
-        if split not in valid_splits:
-            raise ValueError("split must either be in valid_splits")
+        save_dir = Path(self.output_path) / "train_images"
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_gen_images(samples, sqrt_num=4, save_name=str(save_dir / "train_batch.png"))
 
-        samples, targets = next(iter(dataloader))
-        
-        plots.visualize_norm_img_tensors(
-            samples,
-            targets,
-            class_names,
-            self.output_paths["output_dir"] / f"{split}-images",
-        )

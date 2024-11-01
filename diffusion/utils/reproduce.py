@@ -1,13 +1,14 @@
 # Utility functions to reproduce the results from experimentss
 import json
-import random
 import logging
+import random
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Dict
 
 import numpy as np
 import torch
+import yaml
 
 log = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ def model_info(model):
     for param in model.parameters():
         model_size += param.data.nelement()
     log.info("Model params: %.2f M", (model_size / 1024 / 1024))
+
 
 def reproducibility(seed: int) -> None:
     """Set the seed for the sources of randomization. This allows for more reproducible results"""
@@ -45,4 +47,4 @@ def save_configs(
 
     for config_dict, save_name in zip(config_dicts, save_names):
         with open(output_path / save_name, "w") as f:
-            json.dump(config_dict, f)
+            yaml.dump(config_dict, f)

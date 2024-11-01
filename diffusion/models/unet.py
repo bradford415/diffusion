@@ -11,8 +11,9 @@ import torch.nn.functional as F
 from torch import nn
 from torchvision import transforms as T
 
-from diffusion.models.layers import (Downsample, MultiheadedAttentionFM,
-                                     ResnetBlock, Upsample)
+from diffusion.models.layers import (AttnBlock, Downsample,
+                                     MultiheadedAttentionFM, ResnetBlock,
+                                     Upsample)
 from diffusion.models.positional import SinusoidalPosEmb
 
 
@@ -65,7 +66,8 @@ class Unet(nn.Module):
         init_dim = dim
 
         # Initial 7x7 conv in ResNet
-        self.init_conv = nn.Conv2d(input_channels, init_dim, kernel_size=7, padding=3)
+        # self.init_conv = nn.Conv2d(input_channels, init_dim, kernel_size=7, padding=3)
+        self.init_conv = nn.Conv2d(input_channels, init_dim, kernel_size=3, padding=1)
 
         # Create the channels of the model (5,)
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
@@ -109,7 +111,7 @@ class Unet(nn.Module):
         for unet_layer, (
             (ch_in, ch_out),
             layer_attn_heads,
-            layer_attn_ch, # currently this isn't used; attn_dim is just the output_dim of the ResBlocks
+            layer_attn_ch,  # currently this isn't used; attn_dim is just the output_dim of the ResBlocks
             attn,
         ) in enumerate(zip(in_out_ch, attn_heads, attn_ch, attn_levels)):
             # Whether to perform attention for the current Unet level;
@@ -121,9 +123,10 @@ class Unet(nn.Module):
                     (
                         # NOTE: this implementation uses the output of resnetblock as the dimension for attnetion;
                         #       the lucidrains implementation has a seperate parameter to control the attention dim
-                        MultiheadedAttentionFM(
-                            embed_ch=ch_in, num_heads=layer_attn_heads
-                        )
+                        # MultiheadedAttentionFM(
+                        #     embed_ch=ch_in, num_heads=layer_attn_heads
+                        # )
+                        AttnBlock(in_ch=ch_in)
                         if attn
                         else nn.Identity()
                     ),
@@ -134,19 +137,23 @@ class Unet(nn.Module):
             if unet_layer != (num_resolutions - 1):
                 level_layers.append(Downsample(ch_in, ch_out))
             else:
-                level_layers.append(nn.Conv2d(ch_in, ch_out, 3, padding=1))
+                mid_ch = ch_in
+                level_layers.append(
+                    nn.Identity()
+                )  # nn.Conv2d(ch_in, ch_out, 3, padding=1))
 
             # Append the level to the list of downsample levels
             self.down_layers.append(level_layers)
 
         # Initialize the middle layers of unet
-        mid_dim = dims[-1]
+        mid_dim = mid_ch  # dims[-1]
         self.mid_block1 = ResnetBlock(
             mid_dim, mid_dim, time_emb_dim=time_dim, dropout=dropout
         )
-        self.mid_attn = MultiheadedAttentionFM(
-            embed_ch=mid_dim, num_heads=attn_heads[-1]
-        )
+        # self.mid_attn = MultiheadedAttentionFM(
+        #     embed_ch=mid_dim, num_heads=attn_heads[-1]
+        # )
+        self.mid_attn = AttnBlock(in_ch=mid_dim)
         self.mid_block2 = ResnetBlock(
             mid_dim, mid_dim, time_emb_dim=time_dim, dropout=dropout
         )
@@ -166,21 +173,33 @@ class Unet(nn.Module):
             layer_attn_ch,
             attn,
         ) in enumerate(zip(in_out_ch, attn_heads, attn_ch, attn_levels)):
+            if unet_layer == 0:
+                ch_out = 256
+
             level_layers = nn.ModuleList(
                 [
                     # Mid layers use ch_out and down layers use ch_in therefore we need ch_out+ch_in channels
                     # for channel-wise concatenation; the concatenation is done in forward()
                     ResnetBlock(
-                        ch_out + ch_in, ch_out, time_emb_dim=time_dim, dropout=dropout
+                        ch_out + ch_in,
+                        ch_out,
+                        time_emb_dim=time_dim,
+                        dropout=dropout
+                        # ch_in + ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout
                     ),
                     ResnetBlock(
-                        ch_out + ch_in, ch_out, time_emb_dim=time_dim, dropout=dropout
+                        ch_out + ch_in,
+                        ch_out,
+                        time_emb_dim=time_dim,
+                        dropout=dropout
+                        # ch_in + ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout
                     ),
                     (
-                        MultiheadedAttentionFM(
-                            embed_ch=ch_out,
-                            num_heads=layer_attn_heads,
-                        )
+                        # MultiheadedAttentionFM(
+                        #     embed_ch=ch_out,
+                        #     num_heads=layer_attn_heads,
+                        # )
+                        AttnBlock(in_ch=ch_out)
                         if attn
                         else nn.Identity()
                     ),
@@ -190,8 +209,11 @@ class Unet(nn.Module):
             # Upsample feature maps by a factor of 2 if not the last unet decoder level
             if unet_layer != (num_resolutions - 1):
                 level_layers.append(Upsample(ch_out, ch_in))
+                # level_layers.append(Upsample(ch_in, ch_in))
             else:
-                level_layers.append(nn.Conv2d(ch_out, ch_in, 3, padding=1))
+                level_layers.append(
+                    nn.Identity()
+                )  # nn.Conv2d(ch_out, ch_in, 3, padding=1))
 
             self.up_layers.append(level_layers)
 
@@ -248,6 +270,7 @@ class Unet(nn.Module):
             x = block1(x, time)
 
             x = torch.cat((x, feature_maps.pop()), dim=1)
+
             x = block2(x, time)
             x = attn(x)
 

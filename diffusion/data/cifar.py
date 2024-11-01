@@ -9,12 +9,12 @@ from torchvision.datasets import CIFAR10, CIFAR100
 
 from diffusion.data.transforms import Unnormalize
 
-
 unnormalize = T.Compose(
     [
         Unnormalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
     ]
 )
+
 
 def make_cifar_transforms(
     dataset_split,
@@ -60,9 +60,9 @@ def make_cifar_transforms(
         # resize and center crop are none by default
         return T.Compose(
             [
-                T.Resize(resize_size),
+                # T.Resize(resize_size),
                 T.RandomHorizontalFlip(p=horizontal_flip),
-                T.CenterCrop(crop_size),
+                # T.CenterCrop(crop_size),
                 normalize,
             ]
         )
@@ -73,7 +73,11 @@ def make_cifar_transforms(
 
 
 def build_cifar(
-    dataset_name: str, dataset_split: str, root: str = "../", debug_mode: bool = False
+    dataset_name: str,
+    dataset_split: str,
+    root: str = "../",
+    transforms=True,
+    debug_mode: bool = False,
 ) -> Union[CIFAR10, CIFAR100]:
     """Initialize the cifar 10 or 100 dataset
 
@@ -87,7 +91,14 @@ def build_cifar(
     dataset_root = Path(root)
 
     # Create the data augmentation transforms
-    data_transforms = make_cifar_transforms(dataset_split, original_image_size=32)
+    if transforms:
+        data_transforms = make_cifar_transforms(dataset_split, original_image_size=32)
+    else:
+        data_transforms = T.Compose(
+            [
+                T.ToTensor(),
+            ]
+        )
 
     dataset_args = {
         "root": dataset_root,

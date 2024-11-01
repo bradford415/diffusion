@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 
 from diffusion.data.cifar import build_cifar
 from diffusion.models import DDPM, Unet
+from diffusion.models.github_model import UNet_gh
 from diffusion.trainer import Trainer
 from diffusion.utils import reproduce
 
@@ -73,7 +74,6 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
 
     log.info("Initializing...\n")
 
-
     log.info("writing outputs to %s", str(output_path))
 
     # Apply reproducibility seeds
@@ -121,7 +121,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         drop_last=True,
         **train_kwargs,
     )
-    
+
     dataloader_val = DataLoader(
         dataset_val,
         drop_last=True,
@@ -137,12 +137,15 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
 
     # Initalize models
     ## TODO: Apply weights initialization in constructor maybe
-    denoise_model = Unet(**base_config["model_params"]["unet"]).to(device)
+    # denoise_model = Unet(**base_config["model_params"]["unet"]).to(device)
+    denoise_model = UNet_gh(
+        T=1000, ch=128, ch_mult=[1, 2, 2, 2], attn=[1], num_res_blocks=2, dropout=0.1
+    ).to(device)
     diffusion_model = DDPM(
         denoise_model, device=device, **base_config["model_params"]["ddpm"]
     ).to(device)
-    
-    reproduce.model_info(denoise_model)
+
+    reproduce.model_info(diffusion_model)
 
     # Initialize training objects
     optimizer = _init_training_objects(
@@ -160,13 +163,13 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         eval_intervals=train_args["eval_intervals"],
         num_eval_samples=train_args["num_eval_samples"],
         logging_intervals=base_config["logging_intervals"],
-        eval_batch_size=train_args["sampling_batch_size"]
+        eval_batch_size=train_args["sampling_batch_size"],
     )
 
     # Save configuration files
     reproduce.save_configs(
         config_dicts=[base_config, model_config],
-        save_names=["base_config.json", "model_config.json"],
+        save_names=["base_config.yaml", "model_config.yaml"],
         output_path=output_path / "reproduce",
     )
 

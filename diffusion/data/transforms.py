@@ -37,19 +37,19 @@ class Unnormalize:
         Returns:
             Tensor: Unormalized image.
         """
-        
+
         if tensor.ndim < 3:
             raise ValueError(
-            f"Expected tensor to be a tensor image of size (..., C, H, W). Got tensor.size() = {tensor.size()}"
+                f"Expected tensor to be a tensor image of size (..., C, H, W). Got tensor.size() = {tensor.size()}"
             )
-            
+
         dtype = tensor.dtype
         mean = torch.as_tensor(self.mean, dtype=dtype, device=tensor.device)
         std = torch.as_tensor(self.std, dtype=dtype, device=tensor.device)
-        
+
         if not self.inplace:
             tensor = tensor.clone()
-            
+
         if mean.ndim == 1:
             mean = mean.view(-1, 1, 1)
         if std.ndim == 1:
@@ -60,7 +60,8 @@ class Unnormalize:
         # The normalize code -> t.sub_(m).div_(s)
 
         return tensor
-    
+
+
 # TODO: find a better place to put this (maybe return with make_cifa_transforms?)
 reverse_transforms = T.Compose(
     [
@@ -68,7 +69,6 @@ reverse_transforms = T.Compose(
         T.Lambda(lambda t: t.permute(0, 2, 3, 1)),  # BCHW to BHWC
         T.Lambda(lambda t: t * 255.0),  # [0, 1] -> [0, 255]
         T.Lambda(lambda t: t.detach().cpu().numpy().astype(np.uint8)),
-        #T.ToPILImage(),
+        # T.ToPILImage(),
     ]
 )
-

@@ -1,6 +1,6 @@
 import math
 import random
-from typing import Tuple, List, Union
+from typing import List, Tuple, Union
 
 import torch
 from torch import nn
@@ -149,7 +149,10 @@ class DDPM(nn.Module):
         #       e.g., setting 0 to a very small number avoids log of 0
         register_buffer(
             "posterior_log_variance_clipped",
-            torch.log(posterior_variance.clamp(min=1e-20)),
+            # torch.log(posterior_variance.clamp(min=1e-20)),
+            torch.log(
+                torch.cat([self.posterior_variance[1:2], self.posterior_variance[1:]])
+            ),
         )
 
         # Used to calculate the posterior mean from equation 7
@@ -188,7 +191,11 @@ class DDPM(nn.Module):
         """
         assert x_t.shape == pred_noise.shape
 
-        return extract_values(self.sqrt_recip_alphas_cumprod, timestep, x_t.shape) * x_t - extract_values(self.sqrt_recipm1_alphas_cumprod, timestep, x_t.shape) * pred_noise
+        return (
+            extract_values(self.sqrt_recip_alphas_cumprod, timestep, x_t.shape) * x_t
+            - extract_values(self.sqrt_recipm1_alphas_cumprod, timestep, x_t.shape)
+            * pred_noise
+        )
 
     # TODO: Implement at a later point
     def predict_noise_from_start(self, x_t, t, x0):
@@ -232,9 +239,18 @@ class DDPM(nn.Module):
         posterior_variance = extract_values(
             self.posterior_variance, timestep, x_t.shape
         )
-        posterior_log_variance_clipped = extract_values(
-            self.posterior_log_variance_clipped, timestep, x_t.shape
-        )
+        
+        posterior_log_variance_clipped = {
+            # for fixedlarge, we set the initial (log-)variance like so to
+            # get a better decoder log likelihood
+            'fixedlarge': torch.log(torch.cat([self.posterior_variance[1:2],
+                                               self.betas[1:]])),
+            'fixedsmall': self.posterior_log_variance_clipped,
+        }["fixedlarge"]
+        posterior_log_variance_clipped = extract_values(posterior_log_variance_clipped, timestep, x_t.shape)
+        # posterior_log_variance_clipped = extract_values(
+        #     self.posterior_log_variance_clipped, timestep, x_t.shape
+        # )
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def model_predictions(
@@ -260,7 +276,7 @@ class DDPM(nn.Module):
         assert sampled_noise.shape == model_output.shape
 
         # TODO comment
-        if self.objective == "pred_noise": # noise is also epsilon
+        if self.objective == "pred_noise":  # noise is also epsilon
             pred_noise = model_output
             x_start = self.predict_start_from_noise(sampled_noise, timestep, pred_noise)
 
@@ -290,17 +306,17 @@ class DDPM(nn.Module):
 
         """
         # predict the models training objective; for ddpm paper this is the noise
-        pred_noise, pred_x_start = self.model_predictions(sampled_noise, timestep)
+        pred_noise, x_start = self.model_predictions(sampled_noise, timestep)
 
         # clip to the same scale the data was trained on [-1, 1]
-        if clip_denoised:
-            pred_x_start.clamp_(-1.0, 1.0)
+        # if clip_denoised:
+        #    pred_x_start.clamp_(-1.0, 1.0)
 
         # Calculates the posterior_mean & extracts posterior_variance, posterior_log_variance
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(
-            x_start=pred_x_start, x_t=sampled_noise, timestep=timestep
+            x_start=x_start, x_t=sampled_noise, timestep=timestep
         )
-        return model_mean, posterior_variance, posterior_log_variance, pred_x_start
+        return model_mean, posterior_variance, posterior_log_variance, x_start
 
     @torch.inference_mode()
     def p_sample(self, sample_noise, timestep: int):
@@ -354,27 +370,28 @@ class DDPM(nn.Module):
         batch, device = shape[0], self.device
 
         # Create batch of noise from a normal distribution (b, c, h, w)
-        sample_noise = torch.randn(shape, device=device)
+        denoised_img = torch.randn(shape, device=device)
 
         # Stores the denoised sample at every timestep
-        images = [sample_noise]
+        images = [denoised_img]
 
         # Loop from (num_timesteps, 0]
         for timestep in tqdm(
             reversed(range(0, self.num_timesteps)),
             desc="Denoising samples",
-            total=self.num_timesteps, ncols=100
+            total=self.num_timesteps,
+            ncols=100,
         ):
-            denoised_img, x_start = self.p_sample(sample_noise, timestep)
+            denoised_img, x_start = self.p_sample(denoised_img, timestep)
             images.append(denoised_img)
 
         x_0 = denoised_img if not return_all_timesteps else torch.stack(images, dim=1)
 
-        x_0 = torch.clip(x_0, -1.0, 1.0)
+        x_0 = torch.clip(x_0, min=-1.0, max=1.0)
 
         # unnormalizes the generated data and converts it to a PIL image;
         # see data.transforms.Unnormalize for more details
-        #ret = self.unnormalize(ret)
+        # ret = self.unnormalize(ret)
         return x_0
 
     @torch.inference_mode()
@@ -397,14 +414,6 @@ class DDPM(nn.Module):
         )
 
         return images
-
-    def noise_assignment(self, x_start, noise):
-        x_start, noise = tuple(
-            rearrange(t, "b ... -> b (...)") for t in (x_start, noise)
-        )
-        dist = torch.cdist(x_start, noise)
-        _, assign = linear_sum_assignment(dist.cpu())
-        return torch.from_numpy(assign).to(dist.device)
 
     def q_sample(self, img_start, t, noise):
         """Noise a batch of images according to the variance schedule (forward diffusion)

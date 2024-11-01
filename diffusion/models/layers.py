@@ -3,6 +3,7 @@ from typing import Any, Optional
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.nn import init
 
 
 class MultiheadAttention(nn.Module):
@@ -200,7 +201,7 @@ class MultiheadedAttentionFM(nn.Module):
             input: Input tensor to compute self-attention on (b, c, h, w)
         """
         norm_input = self.group_norm(input)
-        
+
         # Project q, k, & v (batch, embed_ch, height, width)
         queries = self.q_proj(norm_input)
         keys = self.k_proj(norm_input)
@@ -242,7 +243,7 @@ class MultiheadedAttentionFM(nn.Module):
 
         # Final projection of MHA
         attention_proj = self.final_proj(attention)
-        
+
         assert attention_proj.shape == input.shape
 
         return attention_proj + input
@@ -273,17 +274,29 @@ class ResnetBlock(nn.Module):
 
         # NOTE: It looks like the original implementation reverses the order i.e., conv2d last: https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L45
         #       but many implementations are written differently and more often Conv2d seems to be first
+        # self.block1 = nn.Sequential(
+        #     nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
+        #     nn.GroupNorm(32, out_ch),
+        #     nn.SiLU(),
+        #     nn.Dropout(dropout),
+        # )
+        # self.block2 = nn.Sequential(
+        #     nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
+        #     nn.GroupNorm(32, out_ch),
+        #     nn.SiLU(),
+        #     nn.Dropout(dropout),
+        # )
         self.block1 = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
-            nn.GroupNorm(32, out_ch),
+            nn.GroupNorm(32, in_ch),
             nn.SiLU(),
             nn.Dropout(dropout),
+            nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
         )
         self.block2 = nn.Sequential(
-            nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
             nn.GroupNorm(32, out_ch),
             nn.SiLU(),
             nn.Dropout(dropout),
+            nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
         )
 
         # Whether to add a point-wise conv skip connection or a regular skip connection;
@@ -301,16 +314,17 @@ class ResnetBlock(nn.Module):
             time_emb: (B, time_dim) TODO: Verify this shape
         """
 
-        x = self.block1(x)
+        h = self.block1(x)
 
         # Add projected time embeddings to the feature maps ;
         # (b, out_ch, h, w) + (b, out_ch, 1, 1)
         # this broadcasts the value of the time_emb accross the feature map h & w
-        x += self.time_proj(time_emb)[:, :, None, None]
+        h += self.time_proj(time_emb)[:, :, None, None]
 
-        x = self.block2(x)
+        h = self.block2(h)
+        h = h + self.shortcut(x)
 
-        return x
+        return h
 
 
 class Downsample(nn.Module):
@@ -348,3 +362,43 @@ class Upsample(nn.Module):
         x = F.interpolate(x, scale_factor=2, mode="nearest")
         x = self.conv(x)
         return x
+
+
+class AttnBlock(nn.Module):
+    """Directly from github code"""
+
+    def __init__(self, in_ch):
+        super().__init__()
+        self.group_norm = nn.GroupNorm(32, in_ch)
+        self.proj_q = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
+        self.proj_k = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
+        self.proj_v = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
+        self.proj = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
+        self.initialize()
+
+    def initialize(self):
+        for module in [self.proj_q, self.proj_k, self.proj_v, self.proj]:
+            init.xavier_uniform_(module.weight)
+            init.zeros_(module.bias)
+        init.xavier_uniform_(self.proj.weight, gain=1e-5)
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        h = self.group_norm(x)
+        q = self.proj_q(h)
+        k = self.proj_k(h)
+        v = self.proj_v(h)
+
+        q = q.permute(0, 2, 3, 1).view(B, H * W, C)
+        k = k.view(B, C, H * W)
+        w = torch.bmm(q, k) * (int(C) ** (-0.5))
+        assert list(w.shape) == [B, H * W, H * W]
+        w = F.softmax(w, dim=-1)
+
+        v = v.permute(0, 2, 3, 1).view(B, H * W, C)
+        h = torch.bmm(w, v)
+        assert list(h.shape) == [B, H * W, C]
+        h = h.view(B, H, W, C).permute(0, 3, 1, 2)
+        h = self.proj(h)
+
+        return x + h
