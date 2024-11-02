@@ -63,7 +63,7 @@ class Unnormalize:
 
 
 # TODO: find a better place to put this (maybe return with make_cifa_transforms?)
-reverse_transforms = T.Compose(
+to_numpy_image = T.Compose(
     [
         Unnormalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),  # [-1, 1] -> [0, 1]
         T.Lambda(lambda t: t.permute(0, 2, 3, 1)),  # BCHW to BHWC

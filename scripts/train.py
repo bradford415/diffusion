@@ -137,14 +137,15 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
 
     # Initalize models
     ## TODO: Apply weights initialization in constructor maybe
-    # denoise_model = Unet(**base_config["model_params"]["unet"]).to(device)
-    denoise_model = UNet_gh(
-        T=1000, ch=128, ch_mult=[1, 2, 2, 2], attn=[1], num_res_blocks=2, dropout=0.1
-    ).to(device)
+    denoise_model = Unet(**base_config["model_params"]["unet"]).to(device)
+    # denoise_model = UNet_gh(
+    #     T=1000, ch=128, ch_mult=[1, 2, 2, 2], attn=[1], num_res_blocks=2, dropout=0.1
+    # ).to(device)
     diffusion_model = DDPM(
         denoise_model, device=device, **base_config["model_params"]["ddpm"]
     ).to(device)
 
+    # Compute and log the number of params in the model
     reproduce.model_info(diffusion_model)
 
     # Initialize training objects

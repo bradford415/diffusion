@@ -33,7 +33,7 @@ model_params:
     dim: 64
     dim_mults: [1, 2, 4, 8]
     image_ch: 3
-    dropout: 0.1 #0.0
+    dropout: 0.0 #0.0
     attn_ch: 128
     attn_heads: 4
     attn_levels: [False, True, False, False] # [False, False, False, True]
@@ -57,17 +57,17 @@ train:
   # Configurations for learning such as the optmizier and lr scheduler
   learning_config: "learning_config_1"
 
-  batch_size: 64 #256
+  batch_size: 64
 
   # The step to start on; ddpm doesn't seem to use epochs and uses steps instead;
   start_step: 1
   steps: 700000
 
   # Number of steps to checkpoint after; use 'null' to turn off checkpointing
-  ckpt_steps: 5000
+  ckpt_steps: 50
 
   # Number of steps to evaluate after
-  eval_intervals: 800 
+  eval_intervals: 800
 
   # Number of samples to generate during evaluation
   num_eval_samples: 16

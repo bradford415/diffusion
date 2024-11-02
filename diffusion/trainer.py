@@ -11,7 +11,7 @@ from torch import nn
 from torch.utils import data
 from torchvision.transforms import functional as F
 
-from diffusion.data.transforms import reverse_transforms
+from diffusion.data.transforms import to_numpy_image
 from diffusion.visualize import save_gen_images
 
 log = logging.getLogger(__name__)
@@ -75,7 +75,6 @@ class Trainer:
         optimizer: torch.optim.Optimizer,
         start_step: int = 1,
         steps: int = 700000,
-        ckpt_steps: int = 1000,
     ):
         """Trains a ddpm model
 
@@ -91,7 +90,6 @@ class Trainer:
             start_step: the step to start the training on; starting at 1 is a good default because it makes
                         checkpointing and calculations more intuitive
             steps: number of stpes to train for; unless starting from a checkpoint, this will be the number of epochs to train for
-            ckpt_steps: save the model after n steps
         """
         ema_model = copy.deepcopy(diffusion_model)
 
@@ -102,10 +100,6 @@ class Trainer:
 
         log.info("\nTraining started\n")
         total_train_start_time = time.time()
-
-        # TODO: Visualize the first batch for each dataloader; manually verifies data augmentation correctness
-        # self._visualize_batch(dataloader_train, "train", class_names)
-        # self._visualize_batch(dataloader_val, "val", class_names)
 
         # Starting the epoch at 1 makes calculations more intuitive
         for step in range(start_step, steps + 1):
@@ -139,14 +133,16 @@ class Trainer:
             # TODO: also save and replace best model based on fid score
 
             # Save the model every ckpt_steps
-            if ckpt_steps == 0:
-                ckpt_path = Path(self.output_path) / f"checkpoint{step:07}.pt"
+            if step % self.ckpt_steps == 0:
+                breakpoint
+                ckpt_path = Path(self.output_path) / "checkpoints"
+                ckpt_path.mkdir(parents=True, exist_ok=True) 
                 self._save_model(
                     diffusion_model,
                     optimizer,
                     ema_model,
                     step,
-                    save_path=ckpt_path,
+                    save_path=ckpt_path / f"checkpoint{step:07}.pt",
                 )
 
         # Entire training time
@@ -182,7 +178,7 @@ class Trainer:
 
         # Visualize a batch of images to verify the agumentations are correct
         if current_step == 1:
-            self._visualize_batch(current_step)
+            self._visualize_batch(samples)
 
         samples = samples.to(self.device)
 
@@ -276,7 +272,7 @@ class Trainer:
         # all_images *= 255.0
         # all_images = all_images.detach().cpu().numpy().astype(np.uint8)
 
-        # all_images = reverse_transforms(all_images)
+        all_images = to_numpy_image(all_images)
 
         # for index, image_set in enumerate(generated_images):
         save_gen_images(
@@ -340,7 +336,15 @@ class Trainer:
     def _save_model(
         self, diffusion_model, optimizer, ema_model, current_step, save_path
     ):
-        """TODO"""
+        """Save the ddpm and ema model
+        
+        Args:
+            diffusion_model: the diffusion model being trained
+            optimizer: the optimizer used during training
+            ema_model: ema which is used for the sampling process
+            current_step: the current step the training is on when
+                          the model is saved
+        """
         torch.save(
             {
                 "model": diffusion_model.state_dict(),
@@ -352,7 +356,7 @@ class Trainer:
         )
 
     def _visualize_batch(
-        self, samples: torch.Tensor
+        self, samples: torch.Tensor,
     ):
         """Visualize a batch of images after data augmentation; sthis helps manually verify
         the data augmentations are working as intended on the images and boxes
@@ -360,7 +364,9 @@ class Trainer:
         Args:
             samples: tensor of a batch of images (b, c, h, w)
         """
+        samples = to_numpy_image(samples)
+        
         save_dir = Path(self.output_path) / "train_images"
         save_dir.mkdir(parents=True, exist_ok=True)
-        save_gen_images(samples, sqrt_num=4, save_name=str(save_dir / "train_batch.png"))
+        save_gen_images(samples, sqrt_num=np.sqrt(samples.shape[0]), save_name=str(save_dir / "train_batch.png"))
 

@@ -274,30 +274,30 @@ class ResnetBlock(nn.Module):
 
         # NOTE: It looks like the original implementation reverses the order i.e., conv2d last: https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L45
         #       but many implementations are written differently and more often Conv2d seems to be first
-        # self.block1 = nn.Sequential(
-        #     nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
-        #     nn.GroupNorm(32, out_ch),
-        #     nn.SiLU(),
-        #     nn.Dropout(dropout),
-        # )
-        # self.block2 = nn.Sequential(
-        #     nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
-        #     nn.GroupNorm(32, out_ch),
-        #     nn.SiLU(),
-        #     nn.Dropout(dropout),
-        # )
         self.block1 = nn.Sequential(
-            nn.GroupNorm(32, in_ch),
-            nn.SiLU(),
-            nn.Dropout(dropout),
             nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
-        )
-        self.block2 = nn.Sequential(
             nn.GroupNorm(32, out_ch),
             nn.SiLU(),
             nn.Dropout(dropout),
-            nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
         )
+        self.block2 = nn.Sequential(
+            nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
+            nn.GroupNorm(32, out_ch),
+            nn.SiLU(),
+            nn.Dropout(dropout),
+        )
+        # self.block1 = nn.Sequential(
+        #     nn.GroupNorm(32, in_ch),
+        #     nn.SiLU(),
+        #     nn.Dropout(dropout),
+        #     nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
+        # )
+        # self.block2 = nn.Sequential(
+        #     nn.GroupNorm(32, out_ch),
+        #     nn.SiLU(),
+        #     nn.Dropout(dropout),
+        #     nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
+        # )
 
         # Whether to add a point-wise conv skip connection or a regular skip connection;
         # in the default parameters the point-wise conv is applied at the end of each unet level
