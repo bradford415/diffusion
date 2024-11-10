@@ -249,7 +249,7 @@ class MultiheadedAttentionFM(nn.Module):
         return attention_proj + input
 
 
-class ResnetBlock(nn.Module):
+class ResBlock(nn.Module):
     """TODO
 
     Implementation based on: https://github.com/w86763777/pytorch-ddpm/blob/f804ccbd58a758b07f79a3b9ecdfb1beb67258f6/model.py#L116
@@ -402,3 +402,12 @@ class AttnBlock(nn.Module):
         h = self.proj(h)
 
         return x + h
+    
+def init_weights(module):
+    """TODO"""
+    if isinstance(module, (nn.Conv2d, nn.Linear)):
+        nn.init.xavier_uniform_(module.weight)
+        if module.bias is not None:
+            nn.init.zeros_(module.bias)
+
+

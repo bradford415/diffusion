@@ -12,7 +12,7 @@ from torch import nn
 from torchvision import transforms as T
 
 from diffusion.models.layers import (AttnBlock, Downsample,
-                                     MultiheadedAttentionFM, ResnetBlock,
+                                     MultiheadedAttentionFM, ResBlock,
                                      Upsample)
 from diffusion.models.positional import SinusoidalPosEmb
 
@@ -119,11 +119,11 @@ class Unet(nn.Module):
             # the default parameters only use attention for the last Unet level (before the middle layers)
             level_layers = nn.ModuleList(
                 [
-                    ResnetBlock(ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout),
+                    ResBlock(ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout),
                     MultiheadedAttentionFM(
                         embed_ch=ch_in, num_heads=layer_attn_heads
                     ),
-                    ResnetBlock(ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout),
+                    ResBlock(ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout),
                     (
                         # NOTE: this implementation uses the output of resnetblock as the dimension for attnetion;
                         #       the lucidrains implementation has a seperate parameter to control the attention dim
@@ -150,14 +150,14 @@ class Unet(nn.Module):
 
         # Initialize the middle layers of unet
         mid_dim = dims[-1]
-        self.mid_block1 = ResnetBlock(
+        self.mid_block1 = ResBlock(
             mid_dim, mid_dim, time_emb_dim=time_dim, dropout=dropout
         )
         self.mid_attn = MultiheadedAttentionFM(
             embed_ch=mid_dim, num_heads=attn_heads[-1]
         )
         # self.mid_attn = AttnBlock(in_ch=mid_dim)
-        self.mid_block2 = ResnetBlock(
+        self.mid_block2 = ResBlock(
             mid_dim, mid_dim, time_emb_dim=time_dim, dropout=dropout
         )
 
@@ -180,7 +180,7 @@ class Unet(nn.Module):
                 [
                     # Mid layers use ch_out and down layers use ch_in therefore we need ch_out+ch_in channels
                     # for channel-wise concatenation; the concatenation is done in forward()
-                    ResnetBlock(
+                    ResBlock(
                         ch_out + ch_in,
                         ch_out,
                         time_emb_dim=time_dim,
@@ -191,7 +191,7 @@ class Unet(nn.Module):
                         embed_ch=ch_out,
                         num_heads=layer_attn_heads,
                     ),
-                    ResnetBlock(
+                    ResBlock(
                         ch_out + ch_in,
                         ch_out,
                         time_emb_dim=time_dim,
@@ -222,7 +222,7 @@ class Unet(nn.Module):
             self.up_layers.append(level_layers)
 
         self.out_ch = image_ch * 1
-        self.final_res_block = ResnetBlock(
+        self.final_res_block = ResBlock(
             init_dim * 2, init_dim, time_emb_dim=time_dim, dropout=dropout
         )
 

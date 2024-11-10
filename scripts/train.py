@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 
 from diffusion.data.cifar import build_cifar
 from diffusion.models import DDPM, Unet
+from diffusion.models.layers import init_weights
 from diffusion.models.github_model import UNet_gh
 from diffusion.trainer import Trainer
 from diffusion.utils import reproduce
@@ -138,6 +139,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     # Initalize models
     ## TODO: Apply weights initialization in constructor maybe
     denoise_model = Unet(**base_config["model_params"]["unet"]).to(device)
+    denoise_model.apply(init_weights)
     # denoise_model = UNet_gh(
     #     T=1000, ch=128, ch_mult=[1, 2, 2, 2], attn=[1], num_res_blocks=2, dropout=0.1
     # ).to(device)
