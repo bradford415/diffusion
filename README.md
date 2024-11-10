@@ -8,6 +8,9 @@ Repository of diffusion models mostly for learning purposes.
 ## Training a Model
 `python scripts/train.py scripts/configs/base-config.yaml`
 
+# cifar-10 dataset
+`python scripts/train.py scripts/configs/train-cifar10-pc-config.yaml`
+
 ## Resources
 ### Denoising Diffusion Probabilistic Model (DDPM)
 * [DDPM Paper](https://arxiv.org/abs/2006.11239)
