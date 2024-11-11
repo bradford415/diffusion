@@ -64,7 +64,7 @@ train:
   steps: 700000
 
   # Number of steps to checkpoint after; use 'null' to turn off checkpointing
-  ckpt_steps: 50
+  ckpt_steps: 2000
 
   # Number of steps to evaluate after
   eval_intervals: 800

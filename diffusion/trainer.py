@@ -125,7 +125,7 @@ class Trainer:
             # Evaluate the diffusion model at a specified interval
             if step % self.eval_intervals == 0:
                 # Evaluate the model on the validation set
-                log.info("sampling — step %d", step)
+                log.info("\nsampling — step %d", step)
 
                 # Generate images
                 self._sample(ema_model, step)
