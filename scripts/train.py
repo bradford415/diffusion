@@ -13,7 +13,6 @@ from torch.utils.data import DataLoader
 from diffusion.data.cifar import build_cifar
 from diffusion.models import DDPM, Unet
 from diffusion.models.layers import init_weights
-from diffusion.models.github_model import UNet_gh
 from diffusion.trainer import Trainer
 from diffusion.utils import reproduce
 

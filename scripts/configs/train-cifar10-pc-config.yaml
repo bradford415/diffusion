@@ -33,7 +33,7 @@ model_params:
     dim: 64
     dim_mults: [1, 2, 4, 8]
     image_ch: 3
-    dropout: 0.0 #0.0
+    dropout: 0.1   #0.0
     attn_ch: 128
     attn_heads: 4
     attn_levels: [False, True, False, False] # [False, False, False, True]
@@ -64,7 +64,7 @@ train:
   steps: 700000
 
   # Number of steps to checkpoint after; use 'null' to turn off checkpointing
-  ckpt_steps: 2000
+  ckpt_steps: 5000
 
   # Number of steps to evaluate after
   eval_intervals: 800
