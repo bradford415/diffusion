@@ -11,6 +11,15 @@ Repository of diffusion models mostly for learning purposes.
 # cifar-10 dataset
 `python scripts/train.py scripts/configs/train-cifar10-pc-config.yaml`
 
+## DDPM results
+### cifar-10
+
+* 400k steps
+
+![generated_images](https://github.com/user-attachments/assets/7d140815-10a2-43cf-8731-3f7bd94dd2ca)
+
+
+
 ## Resources
 ### Denoising Diffusion Probabilistic Model (DDPM)
 * [DDPM Paper](https://arxiv.org/abs/2006.11239)
