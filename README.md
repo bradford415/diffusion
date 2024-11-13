@@ -14,7 +14,7 @@ Repository of diffusion models mostly for learning purposes.
 ## DDPM results
 ### cifar-10
 
-* 400k steps
+* results after 400k steps, batch size 64, image size 32x32
 
 ![generated_images](https://github.com/user-attachments/assets/7d140815-10a2-43cf-8731-3f7bd94dd2ca)
 
