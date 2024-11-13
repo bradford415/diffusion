@@ -3,7 +3,7 @@ import datetime
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple, Optional
 
 import numpy as np
 import torch
@@ -73,6 +73,7 @@ class Trainer:
         dataloader_train: data.DataLoader,
         dataloader_val: data.DataLoader,
         optimizer: torch.optim.Optimizer,
+        checkpoint_path: Optional[str] = None,
         start_step: int = 1,
         steps: int = 700000,
     ):
@@ -87,11 +88,15 @@ class Trainer:
             dataloader_train: torch dataloader to loop through the train dataset
             dataloader_train: torch dataloader to loop through the val dataset
             optimizer: Optimizer which determines how to update the weights
+            checkpoint_path: path to the weights file to resume training from 
             start_step: the step to start the training on; starting at 1 is a good default because it makes
                         checkpointing and calculations more intuitive
             steps: number of stpes to train for; unless starting from a checkpoint, this will be the number of epochs to train for
         """
         ema_model = copy.deepcopy(diffusion_model)
+        
+        if checkpoint_path is not None:
+            start_step = self._load_model(checkpoint_path=checkpoint_path, diffusion_model=diffusion_model, optimizer=optimizer, ema_model=ema_model)
 
         # Infinitely cycle through the dataloader to train by steps
         # i.e., once all the samples have been sampled, it will start over again
@@ -350,10 +355,37 @@ class Trainer:
                 "model": diffusion_model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "ema_model": ema_model.state_dict(),
-                "step": current_step,
+                "step": current_step + 1, # + 1 bc when we resume training we want to start at the next step
             },
             save_path,
         )
+        
+    def _load_model(
+        self, checkpoint_path: str, diffusion_model, optimizer, ema_model
+    ):
+        """Load the ddpm model to resume training or generate new images from
+        
+        Args:
+            checkpoint_path: path to the weights file to resume training from 
+            diffusion_model: the diffusion model being trained
+            optimizer: the optimizer used during training
+            ema_model: ema which is used for the sampling process
+            current_step: the current step the training is on when
+                          the model is saved
+        """
+        # Load the torch weights
+        weights = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
+        
+        # load the state dictionaries for the necessary training modules
+        diffusion_model.load_state_dict(weights["model"])
+        optimizer.load_state_dict(weights["optimizer"])
+        ema_model.load_state_dict(weights["ema_model"])
+        start_step = weights["step"]
+        
+        log.info("NOTE: A checkpoint file was provided, the model will resume training loading model at step %d", start_step)        
+        
+        return start_step
+
 
     def _visualize_batch(
         self, samples: torch.Tensor,

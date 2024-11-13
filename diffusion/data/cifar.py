@@ -18,7 +18,7 @@ unnormalize = T.Compose(
 
 def make_cifar_transforms(
     dataset_split,
-    original_image_size: Tuple[int, int] = 32,
+    orig_size: Tuple[int, int] = [32, 32],
     resize_size: Union[int, Tuple] = None,
     crop_size: Union[int, Tuple, None] = None,
     horizontal_flip=0.5,
@@ -27,7 +27,7 @@ def make_cifar_transforms(
 
     Args:
         dataset_split: which dataset split to use; `train` or `val`
-        original_image_size: tuple, or int if square image, of the orginal height and width
+        orig_size: tuple, or int if square image, of the orginal height and width
         resize_size: Image size to resize the image to (h, w); if scalar, the smaller
                      image dimension will be resized to this value keeping the aspect ratio;
                      if tuple both dimensions will be resized to this value but the aspect ratio
@@ -40,11 +40,11 @@ def make_cifar_transforms(
 
     """
     if resize_size is None:
-        resize_size = original_image_size
+        resize_size = orig_size
 
     # The default case uses resize and crop size as the same value
     if crop_size is None:
-        crop_size = original_image_size
+        crop_size = orig_size
 
     # Convert to tensor and normalize between [-1,1];
     # NOTE: this normalization is the same as the original implementation (i.e., img * 2 -1)
@@ -60,7 +60,7 @@ def make_cifar_transforms(
         # resize and center crop are none by default
         return T.Compose(
             [
-                # T.Resize(resize_size),
+                T.Resize(resize_size),
                 T.RandomHorizontalFlip(p=horizontal_flip),
                 # T.CenterCrop(crop_size),
                 normalize,
@@ -76,7 +76,8 @@ def build_cifar(
     dataset_name: str,
     dataset_split: str,
     root: str = "../",
-    transforms=True,
+    orig_size=32,
+    resize_size=None,
     debug_mode: bool = False,
 ) -> Union[CIFAR10, CIFAR100]:
     """Initialize the cifar 10 or 100 dataset
@@ -91,14 +92,7 @@ def build_cifar(
     dataset_root = Path(root)
 
     # Create the data augmentation transforms
-    if transforms:
-        data_transforms = make_cifar_transforms(dataset_split, original_image_size=32)
-    else:
-        data_transforms = T.Compose(
-            [
-                T.ToTensor(),
-            ]
-        )
+    data_transforms = make_cifar_transforms(dataset_split, orig_size=orig_size, resize_size=resize_size)
 
     dataset_args = {
         "root": dataset_root,

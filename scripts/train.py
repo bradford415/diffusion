@@ -62,6 +62,9 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         / base_config["exp_name"]
         / f"{datetime.datetime.now().strftime('%Y_%m_%d-%I_%M_%S_%p')}"
     )
+    
+    # NOTE: initially I was trying to make resuming training from the same directory as the checkpoint file 
+    #       but there was a lot of edge cases and making a new output_dir seems easiest
     output_path.mkdir(parents=True, exist_ok=True)
     log_path = output_path / "training.log"
 
@@ -104,6 +107,8 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     common_dataset_kwargs = {
         "root": base_config["dataset"]["root"],
         "debug_mode": base_config["debug_mode"],
+        "orig_size": base_config["dataset"]["image_size"],
+        "resize_size": base_config["model_params"]["ddpm"]["image_size"]
     }
 
     dataset_name = base_config["dataset"]["name"]
@@ -182,6 +187,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         "dataloader_train": dataloader_train,
         "dataloader_val": dataloader_val,
         "optimizer": optimizer,
+        "checkpoint_path": train_args["checkpoint_path"],
         "start_step": train_args["start_step"],
         "steps": train_args["steps"],
     }
