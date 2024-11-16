@@ -1,9 +1,9 @@
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
-from pathlib import Path
-from torchvision.utils import make_grid, save_image
-
 from PIL import Image
+from torchvision.utils import make_grid, save_image
 
 
 def save_images_mpl(generated_images: np.ndarray, sqrt_num: int, save_name: str):
@@ -18,7 +18,7 @@ def save_images_mpl(generated_images: np.ndarray, sqrt_num: int, save_name: str)
     fig.subplots_adjust(wspace=-0.47, hspace=0.05)
     fig.savefig(str(save_name), bbox_inches="tight", dpi=300)
     plt.close()
-    
+
 
 def save_images_pil(generated_images: np.ndarray, save_name: str):
     """TODO"""

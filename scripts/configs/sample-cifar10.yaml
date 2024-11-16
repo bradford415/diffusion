@@ -30,6 +30,8 @@ cuda:
   # List of GPU devices to use
   gpus: [0]
 
-# Reproducibility information
+# Reproducibility information; 
 reproducibility:
-  seed: 42
+  # random seed for sampling; use `null` to not use a seed;
+  # I don't think we want to set the seed when sampling
+  seed: null

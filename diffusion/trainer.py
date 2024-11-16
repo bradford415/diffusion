@@ -269,7 +269,9 @@ class Trainer:
         gen_images_output.mkdir(parents=True, exist_ok=True)
 
         # Split the number of samples to generate into a list of batches
-        eval_batch_sizes = num_samples_to_batches(self.num_samples, self.sample_batch_sizes)
+        eval_batch_sizes = num_samples_to_batches(
+            self.num_samples, self.sample_batch_sizes
+        )
         log.info(
             "Generating %d images using the following batch sizes: %s",
             self.num_samples,
@@ -289,7 +291,7 @@ class Trainer:
         save_images_mpl(
             all_images,
             self.num_samples**0.5,
-            str(gen_images_output / "generated_images.png")
+            str(gen_images_output / "generated_images.png"),
         )
 
     def _calculate_ema(

@@ -20,12 +20,13 @@ def model_info(model):
     log.info("Model params: %.2f M", (model_size / 1024 / 1024))
 
 
-def reproducibility(seed: int) -> None:
+def reproducibility(seed: int | None) -> None:
     """Set the seed for the sources of randomization. This allows for more reproducible results"""
 
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
+    if seed is not None:
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
 
 
 def save_configs(

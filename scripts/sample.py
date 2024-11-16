@@ -82,7 +82,7 @@ def main(base_config_path: str, model_config_path: str = None):
 
     # Initalize models
     denoise_model = Unet(**model_config["model_params"][model_name]).to(device)
-    
+
     diffusion_model = DDPM(
         denoise_model, device=device, **model_config["model_params"]["ddpm"]
     ).to(device)

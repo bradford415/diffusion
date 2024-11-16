@@ -31,6 +31,8 @@ def sample(
     )
     ema_model.eval()
 
+    log.info("\nLoading model from step %d", step)
+
     # TODO
     gen_images_output = Path(output_dir) / "samples"
     gen_images_output.mkdir(parents=True, exist_ok=True)
@@ -57,7 +59,7 @@ def sample(
         num_samples**0.5,
         str(gen_images_output / "generated_images.png"),
     )
-    
+
     save_images_pil(
         all_images,
         str(gen_images_output),
@@ -95,7 +97,11 @@ def load_model(
 
     return start_step
 
-def num_samples_to_batches(num_samples: int, batch_size, ):
+
+def num_samples_to_batches(
+    num_samples: int,
+    batch_size,
+):
     """Create a list of batch sizes and the remaining batch size at the last index;
     this is useful to pass the number of eval samples by batch
 
