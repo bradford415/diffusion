@@ -402,14 +402,11 @@ class AttnBlock(nn.Module):
         h = self.proj(h)
 
         return x + h
-    
+
+
 def init_weights(module):
     """I added this but did not seem to change much"""
     if isinstance(module, (nn.Conv2d, nn.Linear)):
         nn.init.xavier_uniform_(module.weight)
         if module.bias is not None:
             nn.init.zeros_(module.bias)
-
-
-
-

@@ -67,7 +67,7 @@ class Unet(nn.Module):
 
         # Initial 7x7 conv in ResNet
         self.init_conv = nn.Conv2d(input_channels, init_dim, kernel_size=7, padding=3)
-        #self.init_conv = nn.Conv2d(input_channels, init_dim, kernel_size=3, padding=1)
+        # self.init_conv = nn.Conv2d(input_channels, init_dim, kernel_size=3, padding=1)
 
         # Create the channels of the model (5,)
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
@@ -120,9 +120,7 @@ class Unet(nn.Module):
             level_layers = nn.ModuleList(
                 [
                     ResBlock(ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout),
-                    MultiheadedAttentionFM(
-                        embed_ch=ch_in, num_heads=layer_attn_heads
-                    ),
+                    MultiheadedAttentionFM(embed_ch=ch_in, num_heads=layer_attn_heads),
                     ResBlock(ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout),
                     (
                         # NOTE: this implementation uses the output of resnetblock as the dimension for attnetion;
@@ -142,8 +140,9 @@ class Unet(nn.Module):
                 level_layers.append(Downsample(ch_in, ch_out))
             else:
                 level_layers.append(
-                #    nn.Identity()
-                nn.Conv2d(ch_in, ch_out, 3, padding=1))
+                    #    nn.Identity()
+                    nn.Conv2d(ch_in, ch_out, 3, padding=1)
+                )
 
             # Append the level to the list of downsample levels
             self.down_layers.append(level_layers)
@@ -203,7 +202,7 @@ class Unet(nn.Module):
                             embed_ch=ch_out,
                             num_heads=layer_attn_heads,
                         )
-                        #AttnBlock(in_ch=ch_out)
+                        # AttnBlock(in_ch=ch_out)
                         if attn
                         else nn.Identity()
                     ),
@@ -216,8 +215,9 @@ class Unet(nn.Module):
                 # level_layers.append(Upsample(ch_in, ch_in))
             else:
                 level_layers.append(
-                    #nn.Identity()
-                nn.Conv2d(ch_out, ch_in, 3, padding=1))
+                    # nn.Identity()
+                    nn.Conv2d(ch_out, ch_in, 3, padding=1)
+                )
 
             self.up_layers.append(level_layers)
 
@@ -244,13 +244,13 @@ class Unet(nn.Module):
 
         # Project the noise time embedding (b, time_dim)
         time = self.time_mlp(time)
- 
+
         feature_maps = [x]
 
         # Encoder layers
-        for block1, attn1, block2,  attn2, downsample in self.down_layers:
+        for block1, attn1, block2, attn2, downsample in self.down_layers:
             x = block1(x, time)
-            
+
             x = attn1(x)
 
             # Append the feature maps so they can be concatenated during upsampling
@@ -270,11 +270,11 @@ class Unet(nn.Module):
         x = self.mid_block2(x, time)
 
         # Decoder layers
-        for block1, attn1, block2,  attn2, upsample in self.up_layers:
+        for block1, attn1, block2, attn2, upsample in self.up_layers:
             x = torch.cat((x, feature_maps.pop()), dim=1)
 
             x = block1(x, time)
-            
+
             x = attn1(x)
 
             x = torch.cat((x, feature_maps.pop()), dim=1)

@@ -1,0 +1,27 @@
+# Model to use for denoising
+model_name: unet
+
+# params for the model
+model_params:
+
+  # Params for UNet model; see diffusion.models.unet for param descriptions
+  unet:
+    dim: 64
+    dim_mults: [1, 2, 4, 8]
+    image_ch: 3
+    dropout: 0.1   #0.0
+    attn_ch: 128
+    attn_heads: 4
+    attn_levels: [False, True, False, False] # [False, False, False, True]
+
+  # Params for the full ddpm model
+  ddpm:
+    # Desired size of images to regenerate; this will resize the train dataset to this size as well
+    image_size: [32, 32]
+    
+    timesteps: 1000
+    objective: "pred_noise"
+    variance_schedule: "linear"
+
+  # ema decay TODO write more on this
+  ema_decay: 0.9999

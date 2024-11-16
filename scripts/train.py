@@ -37,7 +37,7 @@ scheduler_map = {
 log = logging.getLogger(__name__)
 
 
-def main(base_config_path: str, model_config_path: Optional[str] = None):
+def main(base_config_path: str, model_config_path: str = None):
     """Entrypoint for the project
 
     Args:
@@ -49,12 +49,10 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     with open(base_config_path, "r") as f:
         base_config = yaml.safe_load(f)
 
-    if model_config_path is not None:
-        with open(model_config_path, "r") as f:
-            model_config = yaml.safe_load(f)
-    else:
-        model_name = base_config["model_name"]
-        model_config = base_config["model_params"][model_name]
+    with open(model_config_path, "r") as f:
+        model_config = yaml.safe_load(f)
+
+    model_name = model_config["model_name"]
 
     # Initialize paths
     output_path = (
@@ -62,8 +60,8 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         / base_config["exp_name"]
         / f"{datetime.datetime.now().strftime('%Y_%m_%d-%I_%M_%S_%p')}"
     )
-    
-    # NOTE: initially I was trying to make resuming training from the same directory as the checkpoint file 
+
+    # NOTE: initially I was trying to make resuming training from the same directory as the checkpoint file
     #       but there was a lot of edge cases and making a new output_dir seems easiest
     output_path.mkdir(parents=True, exist_ok=True)
     log_path = output_path / "training.log"
@@ -108,7 +106,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
         "root": base_config["dataset"]["root"],
         "debug_mode": base_config["debug_mode"],
         "orig_size": base_config["dataset"]["image_size"],
-        "resize_size": base_config["model_params"]["ddpm"]["image_size"]
+        "resize_size": model_config["model_params"]["ddpm"]["image_size"],
     }
 
     dataset_name = base_config["dataset"]["name"]
@@ -142,13 +140,13 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
 
     # Initalize models
     ## TODO: Apply weights initialization in constructor maybe
-    denoise_model = Unet(**base_config["model_params"]["unet"]).to(device)
+    denoise_model = Unet(**model_config["model_params"][model_name]).to(device)
     denoise_model.apply(init_weights)
     # denoise_model = UNet_gh(
     #     T=1000, ch=128, ch_mult=[1, 2, 2, 2], attn=[1], num_res_blocks=2, dropout=0.1
     # ).to(device)
     diffusion_model = DDPM(
-        denoise_model, device=device, **base_config["model_params"]["ddpm"]
+        denoise_model, device=device, **model_config["model_params"]["ddpm"]
     ).to(device)
 
     # Compute and log the number of params in the model
@@ -165,7 +163,7 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     trainer = Trainer(
         output_path=str(output_path),
         device=device,
-        ema_decay=base_config["model_params"]["ema_decay"],
+        ema_decay=model_config["model_params"]["ema_decay"],
         ckpt_steps=train_args["ckpt_steps"],
         eval_intervals=train_args["eval_intervals"],
         num_eval_samples=train_args["num_eval_samples"],
@@ -183,7 +181,6 @@ def main(base_config_path: str, model_config_path: Optional[str] = None):
     # Build trainer args used for the training
     trainer_args = {
         "diffusion_model": diffusion_model,
-        # "criterion": criterion,
         "dataloader_train": dataloader_train,
         "dataloader_val": dataloader_val,
         "optimizer": optimizer,

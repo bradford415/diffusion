@@ -1,53 +1,112 @@
 import logging
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
 import torch
 from torch import nn
 
+from diffusion.data.transforms import to_numpy_image
+from diffusion.visualize import save_images_mpl, save_images_pil
+
 log = logging.getLogger(__name__)
 
 
-@torch.no_grad()
-def evaluate(
-    output_path: str,
-    model: nn.Module,
-    dataloader_test: Iterable,
-    class_names: List,
-    device: torch.device = torch.device("cpu"),
-) -> None:
-    """A single forward pass to evluate the val set after training an epoch
+@torch.inference_mode
+def sample(
+    ema_model: nn.Module,
+    output_dir: str,
+    checkpoint_path: str,
+    num_samples: int = 16,
+    sample_batch_size: int = 4,
+    device=torch.device("cpu"),
+):
+    """Denoises pure noise to generate and save images
 
     Args:
-        model: Model to train
-        criterion: Loss function; only used to inspect the loss on the val set,
-                    not used for backpropagation
-        dataloader_val: Dataloader for the validation set
-        device: Device to run the model on
+        ema_model: model to sample from; this will be the same as the diffusion model
+                   the only difference is that the ema weights will be loaded into it
     """
-    model.eval()
+    step = load_model(
+        checkpoint_path=checkpoint_path, ema_model=ema_model, device=device
+    )
+    ema_model.eval()
 
-    labels = []
-    sample_metrics = []  # List of tuples (true positives, cls_confs, cls_labels)
-    for steps, (samples, targets) in enumerate(dataloader_test):
-        samples = samples.to(device)
+    # TODO
+    gen_images_output = Path(output_dir) / "samples"
+    gen_images_output.mkdir(parents=True, exist_ok=True)
 
-    return None
+    # Split the number of samples to generate into a list of batches
+    sample_batch_sizes = num_samples_to_batches(num_samples, sample_batch_size)
+    log.info(
+        "Generating %d images using the following batch sizes: %s",
+        num_samples,
+        sample_batch_sizes,
+    )
+    generated_images = []
+    for index, batch_size in enumerate(sample_batch_sizes):
+        log.info("Processing batch %d/%d", index + 1, len(sample_batch_sizes))
+        generated_images.append(ema_model.sample_generation(batch_size=batch_size))
+
+    all_images = torch.cat(generated_images, dim=0)
+
+    all_images = to_numpy_image(all_images)
+
+    # for index, image_set in enumerate(generated_images):
+    save_images_mpl(
+        all_images,
+        num_samples**0.5,
+        str(gen_images_output / "generated_images.png"),
+    )
+    
+    save_images_pil(
+        all_images,
+        str(gen_images_output),
+    )
 
 
-def load_model_state_dict(model: nn.Module, weights_path: str):
-    """Load the weights of a trained or pretrained model from the state_dict file;
-    this could be from a fully trained model or a partially trained model that you want
-    to resume training from.
+def load_model(
+    checkpoint_path: str,
+    diffusion_model: nn.Module = None,
+    optimizer: nn.Module = None,
+    ema_model: nn.Module = None,
+    device=torch.device("cpu"),
+):
+    """Load the ddpm model to resume training or generate new images from
 
     Args:
-        model: The torch model to load the weights into
-        weights_path:
+        checkpoint_path: path to the weights file to resume training from
+        diffusion_model: the diffusion model being trained
+        optimizer: the optimizer used during training
+        ema_model: ema which is used for the sampling process
+        current_step: the current step the training is on when
+                        the model is saved
     """
-    device = torch.device(
-        "cuda" if torch.cuda.is_available() else "cpu"
-    )  # Select device for inference
+    # Load the torch weights
+    weights = torch.load(checkpoint_path, map_location=device, weights_only=True)
 
-    state_dict = torch.load(weights_path, map_location=device)
-    model.load_state_dict(state_dict["model"])
+    # load the state dictionaries for the necessary training modules
+    if diffusion_model is not None:
+        diffusion_model.load_state_dict(weights["model"])
+    if optimizer is not None:
+        optimizer.load_state_dict(weights["optimizer"])
+    if ema_model is not None:
+        ema_model.load_state_dict(weights["ema_model"])
+    start_step = weights["step"]
 
-    return model
+    return start_step
+
+def num_samples_to_batches(num_samples: int, batch_size, ):
+    """Create a list of batch sizes and the remaining batch size at the last index;
+    this is useful to pass the number of eval samples by batch
+
+    Example: num_samples = 25 and batch_size = 16 -> [16, 9]
+
+    Args:
+        num_samples: number of samples to generate images of
+    """
+    groups = num_samples // batch_size
+    remainder = num_samples % batch_size
+    batch_arr = [batch_size] * groups
+    if remainder > 0:
+        batch_arr.append(remainder)
+    return batch_arr

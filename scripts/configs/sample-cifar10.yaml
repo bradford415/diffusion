@@ -1,0 +1,35 @@
+# Base config file which stores the default parameters which apply to all model configurations
+---
+
+# Mode to use for debugging/development; this only uses a few samples in in the train/val dataset
+# to quickly run the code
+debug_mode: False
+
+# Base directory for output files; do not change this 
+output_path: "output/sample"
+
+# Experiment name; this will be used for the output directory; use "development" when developing
+exp_name: "development"
+
+# Size of images to generate; this does not have to be the same size the model was trained on
+sample_size: 32
+
+sampling:
+  # Number of images to generate
+  num_samples: 16
+
+  # Number of images to generate in one forward pass
+  sample_batch_size: 4
+
+  # Path of weights file (.pt) to resume training
+  checkpoint_path: "/home/bselee/programming/diffusion/output/train/development/2024_11_10-08_37_38_PM/checkpoints/checkpoint0402000.pt"
+
+# GPU parameters
+cuda:
+
+  # List of GPU devices to use
+  gpus: [0]
+
+# Reproducibility information
+reproducibility:
+  seed: 42

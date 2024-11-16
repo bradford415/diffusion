@@ -3,7 +3,7 @@ import datetime
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -12,7 +12,8 @@ from torch.utils import data
 from torchvision.transforms import functional as F
 
 from diffusion.data.transforms import to_numpy_image
-from diffusion.visualize import save_gen_images
+from diffusion.evaluate import load_model, num_samples_to_batches
+from diffusion.visualize import save_images_mpl
 
 log = logging.getLogger(__name__)
 
@@ -28,8 +29,8 @@ class Trainer:
         ema_decay: float = 0.9999,
         ckpt_steps: int = 1000,
         eval_intervals: int = 40,
-        eval_batch_size: int = 16,
-        num_eval_samples: int = 16,
+        sample_batch_size: int = 16,
+        num_samples: int = 16,
         logging_intervals: int = 20,
     ):
         """Constructor for the Trainer class
@@ -40,7 +41,7 @@ class Trainer:
             max_grad_norm: the l2 magnitude to clip the gradients
             ema_decay: TODO
             eval_intervals: number of steps to evaluate the model after during training
-            num_eval_samples: number of samples to evaluate; must be a perfect square
+            num_samples: number of samples to generate; must be a perfect square
             logging_interval: number of steps to log the training progress after
 
         """
@@ -60,8 +61,8 @@ class Trainer:
 
         self.max_grad_norm = max_grad_norm
 
-        self.eval_batch_size = eval_batch_size
-        self.num_eval_samples = num_eval_samples
+        self.sample_batch_size = sample_batch_size
+        self.num_samples = num_samples
 
         self.ema_decay = ema_decay
 
@@ -88,15 +89,25 @@ class Trainer:
             dataloader_train: torch dataloader to loop through the train dataset
             dataloader_train: torch dataloader to loop through the val dataset
             optimizer: Optimizer which determines how to update the weights
-            checkpoint_path: path to the weights file to resume training from 
+            checkpoint_path: path to the weights file to resume training from
             start_step: the step to start the training on; starting at 1 is a good default because it makes
                         checkpointing and calculations more intuitive
             steps: number of stpes to train for; unless starting from a checkpoint, this will be the number of epochs to train for
         """
         ema_model = copy.deepcopy(diffusion_model)
-        
+
         if checkpoint_path is not None:
-            start_step = self._load_model(checkpoint_path=checkpoint_path, diffusion_model=diffusion_model, optimizer=optimizer, ema_model=ema_model)
+            start_step = load_model(
+                checkpoint_path=checkpoint_path,
+                diffusion_model=diffusion_model,
+                optimizer=optimizer,
+                ema_model=ema_model,
+                device=self.device,
+            )
+            log.info(
+                "NOTE: A checkpoint file was provided, the model will resume training at step %d",
+                start_step,
+            )
 
         # Infinitely cycle through the dataloader to train by steps
         # i.e., once all the samples have been sampled, it will start over again
@@ -115,6 +126,7 @@ class Trainer:
                 diffusion_model, dataloader_train, optimizer, step
             )
 
+            # Compute the validation loss
             if step % self.log_intervals == 0:
                 val_loss = self._evaluate_one_step(diffusion_model, dataloader_val)
                 log.info(
@@ -127,7 +139,7 @@ class Trainer:
             # Update the EMA model's weights
             self._calculate_ema(diffusion_model, ema_model, self.ema_decay)
 
-            # Evaluate the diffusion model at a specified interval
+            # Sample images from the diffusion model at a specified interval
             if step % self.eval_intervals == 0:
                 # Evaluate the model on the validation set
                 log.info("\nsampling — step %d", step)
@@ -141,7 +153,7 @@ class Trainer:
             if step % self.ckpt_steps == 0:
                 breakpoint
                 ckpt_path = Path(self.output_path) / "checkpoints"
-                ckpt_path.mkdir(parents=True, exist_ok=True) 
+                ckpt_path.mkdir(parents=True, exist_ok=True)
                 self._save_model(
                     diffusion_model,
                     optimizer,
@@ -244,12 +256,10 @@ class Trainer:
         ema_model: nn.Module,
         current_step: int,
     ):
-        """Denoises pure noise to generate and save images
+        """Denoises pure noise to generate images
 
         Args:
             ema model: model to sample from; typically only the ema model is used
-
-        Returns:
         """
         # Eval is only performed with the ema model
         ema_model.eval()
@@ -259,10 +269,10 @@ class Trainer:
         gen_images_output.mkdir(parents=True, exist_ok=True)
 
         # Split the number of samples to generate into a list of batches
-        eval_batch_sizes = self._num_samples_to_batches(self.num_eval_samples)
+        eval_batch_sizes = num_samples_to_batches(self.num_samples, self.sample_batch_sizes)
         log.info(
             "Generating %d images using the following batch sizes: %s",
-            self.num_eval_samples,
+            self.num_samples,
             eval_batch_sizes,
         )
         generated_images = []
@@ -272,18 +282,14 @@ class Trainer:
 
         all_images = torch.cat(generated_images, dim=0)
 
-        # # Convert generated images to viewable shape
-        # all_images = all_images.permute(0, 2, 3, 1) # (b, c, h, w) -> (b, h, w, c)
-        # all_images *= 255.0
-        # all_images = all_images.detach().cpu().numpy().astype(np.uint8)
-
+        # [-1, 1] -> [0, 1]; (b, c, h, w) -> (b, h, w, c); [0, 1] -> [0, 255]
         all_images = to_numpy_image(all_images)
 
         # for index, image_set in enumerate(generated_images):
-        save_gen_images(
+        save_images_mpl(
             all_images,
-            self.num_eval_samples**0.5,
-            str(gen_images_output / "generated_images.png"),
+            self.num_samples**0.5,
+            str(gen_images_output / "generated_images.png")
         )
 
     def _calculate_ema(
@@ -306,22 +312,6 @@ class Trainer:
                 target_dict[key].data * decay + source_dict[key].data * (1 - decay)
             )
 
-    def _num_samples_to_batches(self, num_samples: int):
-        """Create a list of batch sizes and the remaining batch size at the last index;
-        this is useful to pass the number of eval samples by batch
-
-        Example: num_samples = 25 and batch_size = 16 -> [16, 9]
-
-        Args:
-            num_samples: number of samples to generate images of
-        """
-        groups = num_samples // self.eval_batch_size
-        remainder = num_samples % self.eval_batch_size
-        batch_arr = [self.eval_batch_size] * groups
-        if remainder > 0:
-            batch_arr.append(remainder)
-        return batch_arr
-
     def _cycle(self, dataloader: data.DataLoader):
         """This function infinitely cycles through a torch dataloader. This is useful
         when you want to train by steps rather than epochs.
@@ -342,7 +332,7 @@ class Trainer:
         self, diffusion_model, optimizer, ema_model, current_step, save_path
     ):
         """Save the ddpm and ema model
-        
+
         Args:
             diffusion_model: the diffusion model being trained
             optimizer: the optimizer used during training
@@ -355,18 +345,17 @@ class Trainer:
                 "model": diffusion_model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "ema_model": ema_model.state_dict(),
-                "step": current_step + 1, # + 1 bc when we resume training we want to start at the next step
+                "step": current_step
+                + 1,  # + 1 bc when we resume training we want to start at the next step
             },
             save_path,
         )
-        
-    def _load_model(
-        self, checkpoint_path: str, diffusion_model, optimizer, ema_model
-    ):
+
+    def _load_model(self, checkpoint_path: str, diffusion_model, optimizer, ema_model):
         """Load the ddpm model to resume training or generate new images from
-        
+
         Args:
-            checkpoint_path: path to the weights file to resume training from 
+            checkpoint_path: path to the weights file to resume training from
             diffusion_model: the diffusion model being trained
             optimizer: the optimizer used during training
             ema_model: ema which is used for the sampling process
@@ -374,21 +363,26 @@ class Trainer:
                           the model is saved
         """
         # Load the torch weights
-        weights = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
-        
+        weights = torch.load(
+            checkpoint_path, map_location=self.device, weights_only=True
+        )
+
         # load the state dictionaries for the necessary training modules
         diffusion_model.load_state_dict(weights["model"])
         optimizer.load_state_dict(weights["optimizer"])
         ema_model.load_state_dict(weights["ema_model"])
         start_step = weights["step"]
-        
-        log.info("NOTE: A checkpoint file was provided, the model will resume training loading model at step %d", start_step)        
-        
+
+        log.info(
+            "NOTE: A checkpoint file was provided, the model will resume training loading model at step %d",
+            start_step,
+        )
+
         return start_step
 
-
     def _visualize_batch(
-        self, samples: torch.Tensor,
+        self,
+        samples: torch.Tensor,
     ):
         """Visualize a batch of images after data augmentation; sthis helps manually verify
         the data augmentations are working as intended on the images and boxes
@@ -397,8 +391,11 @@ class Trainer:
             samples: tensor of a batch of images (b, c, h, w)
         """
         samples = to_numpy_image(samples)
-        
+
         save_dir = Path(self.output_path) / "train_images"
         save_dir.mkdir(parents=True, exist_ok=True)
-        save_gen_images(samples, sqrt_num=np.sqrt(samples.shape[0]), save_name=str(save_dir / "train_batch.png"))
-
+        save_images_mpl(
+            samples,
+            sqrt_num=np.sqrt(samples.shape[0]),
+            save_name=str(save_dir / "train_batch.png"),
+        )

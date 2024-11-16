@@ -25,35 +25,9 @@ dataset:
   # Number of CPU processes the next sample in the dataset; use 0 to only use the main process
   num_workers: 4
 
-# Model to be trained during diffusion; later I should make this its own config file
+# Model to be trained during diffusion
 model_name: unet
-
-# params for the model
-model_params:
-
-  # Params for UNet model; see diffusion.models.unet for param descriptions
-  unet:
-    dim: 64
-    dim_mults: [1, 2, 4, 8]
-    image_ch: 3
-    dropout: 0.1   #0.0
-    attn_ch: 128
-    attn_heads: 4
-    attn_levels: [False, True, False, False] # [False, False, False, True]
-
-  # Params for the full ddpm model
-  ddpm:
-    # Desired size of images to regenerate; this will resize the train dataset to this size as well
-    image_size: [64, 64]
-    
-    timesteps: 1000
-    objective: "pred_noise"
-    variance_schedule: "linear"
-
-  # ema decay TODO write more on this
-  ema_decay: 0.9999
   
-
 # Log the train progress every n steps
 logging_intervals: 20
 
@@ -75,15 +49,13 @@ train:
   eval_intervals: 2000
 
   # Number of samples to generate during evaluation
-  num_eval_samples: 16
+  num_samples: 16
 
   # Number of samples to pass through the model during sampling
   sampling_batch_size: 4
 
   # Path of weights file (.pt) to resume training; use `null` to train a new model from scratch 
   checkpoint_path: /home/bselee/programming/diffusion/output/train/development/2024_11_11-09_40_21_PM/checkpoints/checkpoint0015000.pt
-
-validation:
   
 
 # GPU parameters

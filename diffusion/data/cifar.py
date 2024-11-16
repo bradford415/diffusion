@@ -92,7 +92,9 @@ def build_cifar(
     dataset_root = Path(root)
 
     # Create the data augmentation transforms
-    data_transforms = make_cifar_transforms(dataset_split, orig_size=orig_size, resize_size=resize_size)
+    data_transforms = make_cifar_transforms(
+        dataset_split, orig_size=orig_size, resize_size=resize_size
+    )
 
     dataset_args = {
         "root": dataset_root,
