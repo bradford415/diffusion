@@ -6,7 +6,7 @@ Repository of diffusion models mostly for learning purposes.
 * [Resources](#resources)
 
 ## Training a Model
-`python scripts/train.py scripts/configs/base-config.yaml`
+`python python scripts/train.py scripts/configs/train-cifar10-pc.yaml scripts/configs/models/ddpm.yaml`
 
 # cifar-10 dataset
 `python scripts/train.py scripts/configs/train-cifar10-pc-config.yaml`
