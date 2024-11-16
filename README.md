@@ -9,7 +9,7 @@ Repository of diffusion models mostly for learning purposes.
 `python scripts/train.py scripts/configs/train-cifar10-pc.yaml scripts/configs/models/ddpm.yaml`
 
 # cifar-10 dataset
-`python scripts/train.py scripts/configs/train-cifar10-pc-config.yaml`
+`python scripts/train.py scripts/configs/train-cifar10-pc.yaml scripts/configs/models/ddpm.yaml`
 
 ## DDPM results
 ### cifar-10
