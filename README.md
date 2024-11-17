@@ -28,3 +28,5 @@ Repository of diffusion models mostly for learning purposes.
   * This one is written slightly different and for some parts is easier to follow
 * [CVPR DDPM Tutorial](https://cvpr2023-tutorial-diffusion-models.github.io/)
   * Powerpoint explains the equations very well and helped me link the code to the equations
+* [Annotated Unet](https://nn.labml.ai/diffusion/stable_diffusion/model/unet.html)
+  * Very good annotated Unet code and other great annotations and explanations of Stable Diffusion
