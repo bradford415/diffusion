@@ -270,7 +270,7 @@ class Trainer:
 
         # Split the number of samples to generate into a list of batches
         eval_batch_sizes = num_samples_to_batches(
-            self.num_samples, self.sample_batch_sizes
+            self.num_samples, self.sample_batch_size
         )
         log.info(
             "Generating %d images using the following batch sizes: %s",

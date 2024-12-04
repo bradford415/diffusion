@@ -11,7 +11,7 @@ output_path: "output/sample"
 # Experiment name; this will be used for the output directory; use "development" when developing
 exp_name: "development"
 
-# Size of images to generate; this does not have to be the same size the model was trained on
+# Size of images to generate; NOTE: this is experimental, I should probably remove it
 sample_size: 32
 
 sampling:

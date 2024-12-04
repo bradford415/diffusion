@@ -149,7 +149,7 @@ class DDPM(nn.Module):
         #       e.g., setting 0 to a very small number avoids log of 0
         register_buffer(
             "posterior_log_variance_clipped",
-            # torch.log(posterior_variance.clamp(min=1e-20)),
+            # torch.log(posterior_variance.clamp(min=1e-2 0)),
             torch.log(
                 torch.cat([self.posterior_variance[1:2], self.posterior_variance[1:]])
             ),
@@ -240,20 +240,20 @@ class DDPM(nn.Module):
             self.posterior_variance, timestep, x_t.shape
         )
 
-        posterior_log_variance_clipped = {
-            # for fixedlarge, we set the initial (log-)variance like so to
-            # get a better decoder log likelihood
-            "fixedlarge": torch.log(
-                torch.cat([self.posterior_variance[1:2], self.betas[1:]])
-            ),
-            "fixedsmall": self.posterior_log_variance_clipped,
-        }["fixedlarge"]
-        posterior_log_variance_clipped = extract_values(
-            posterior_log_variance_clipped, timestep, x_t.shape
-        )
+        # posterior_log_variance_clipped = {
+        #     # for fixedlarge, we set the initial (log-)variance like so to
+        #     # get a better decoder log likelihood
+        #     "fixedlarge": torch.log(
+        #         torch.cat([self.posterior_variance[1:2], self.betas[1:]])
+        #     ),
+        #     "fixedsmall": self.posterior_log_variance_clipped,
+        # }["fixedlarge"]
         # posterior_log_variance_clipped = extract_values(
-        #     self.posterior_log_variance_clipped, timestep, x_t.shape
+        #     posterior_log_variance_clipped, timestep, x_t.shape
         # )
+        posterior_log_variance_clipped = extract_values(
+            self.posterior_log_variance_clipped, timestep, x_t.shape
+        )
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def model_predictions(

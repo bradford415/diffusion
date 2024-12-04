@@ -6,8 +6,9 @@ model_params:
 
   # Params for UNet model; see diffusion.models.unet for param descriptions
   unet:
-    dim: 64
-    dim_mults: [1, 2, 4, 8]
+    ch: 128 #64
+    ch_mults: [1, 2, 2, 2] #[1, 2, 4, 8]
+    num_res_blocks: 2
     image_ch: 3
     dropout: 0.1   #0.0
     attn_ch: 128

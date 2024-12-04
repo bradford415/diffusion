@@ -215,7 +215,8 @@ class MultiheadedAttentionFM(nn.Module):
         keys = keys.permute(0, 2, 3, 1).view(batch, height * width, embed_ch)
         values = values.permute(0, 2, 3, 1).view(batch, height * width, embed_ch)
 
-        # Split into multiple heads (batch, num_heads, features, head_dim)
+        # Split into embeddings into multiple heads; features = height*width
+        # (b, features, num_heads, head_dim) -> (b, num_heads, features, head_dim)
         query_heads = queries.view(
             queries.shape[0], queries.shape[1], self.num_heads, self.head_dim
         ).transpose(1, 2)
@@ -226,7 +227,7 @@ class MultiheadedAttentionFM(nn.Module):
             values.shape[0], values.shape[1], self.num_heads, self.head_dim
         ).transpose(1, 2)
 
-        # Compute attention on all heads
+        # Compute attention on all heads (b, heads, features, head_dim)
         attention = self.attention(query_heads, key_heads, value_heads)
 
         # Combine all the heads together (concatenation step);
@@ -274,30 +275,30 @@ class ResBlock(nn.Module):
 
         # NOTE: It looks like the original implementation reverses the order i.e., conv2d last: https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L45
         #       but many implementations are written differently and more often Conv2d seems to be first
-        self.block1 = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
-            nn.GroupNorm(32, out_ch),
-            nn.SiLU(),
-            nn.Dropout(dropout),
-        )
-        self.block2 = nn.Sequential(
-            nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
-            nn.GroupNorm(32, out_ch),
-            nn.SiLU(),
-            nn.Dropout(dropout),
-        )
         # self.block1 = nn.Sequential(
-        #     nn.GroupNorm(32, in_ch),
-        #     nn.SiLU(),
-        #     nn.Dropout(dropout),
         #     nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
-        # )
-        # self.block2 = nn.Sequential(
         #     nn.GroupNorm(32, out_ch),
         #     nn.SiLU(),
         #     nn.Dropout(dropout),
-        #     nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
         # )
+        # self.block2 = nn.Sequential(
+        #     nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
+        #     nn.GroupNorm(32, out_ch),
+        #     nn.SiLU(),
+        #     nn.Dropout(dropout),
+        # )
+        self.block1 = nn.Sequential(
+            nn.GroupNorm(32, in_ch),
+            nn.SiLU(),
+            nn.Dropout(dropout),
+            nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
+        )
+        self.block2 = nn.Sequential(
+            nn.GroupNorm(32, out_ch),
+            nn.SiLU(),
+            nn.Dropout(dropout),
+            nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
+        )
 
         # Whether to add a point-wise conv skip connection or a regular skip connection;
         # in the default parameters the point-wise conv is applied at the end of each unet level
@@ -330,7 +331,7 @@ class ResBlock(nn.Module):
 class Downsample(nn.Module):
     """Downsample feature map; this is used at the last layer of each unet encoder level"""
 
-    def __init__(self, in_ch: torch.Tensor, out_ch: torch.Tensor):
+    def __init__(self, ch: torch.Tensor):
         """Initialize downsample module
 
         Args:
@@ -340,7 +341,7 @@ class Downsample(nn.Module):
         super().__init__()
 
         # Downsample by factor of 2
-        self.conv = nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=2, padding=1)
+        self.conv = nn.Conv2d(ch, ch, kernel_size=3, stride=2, padding=1)
 
     def forward(self, x):
         """Downsample the feature map"""
@@ -351,10 +352,10 @@ class Downsample(nn.Module):
 class Upsample(nn.Module):
     """Upsample feature maps; this is used at the last layer of each unet decoder level"""
 
-    def __init__(self, in_ch: torch.Tensor, out_ch: torch.Tensor):
+    def __init__(self, ch: torch.Tensor):
         """Initialize upsample module"""
         super().__init__()
-        self.conv = nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1)
+        self.conv = nn.Conv2d(ch, ch, kernel_size=3, stride=1, padding=1)
 
     def forward(self, x):
         """TODO"""
@@ -402,6 +403,28 @@ class AttnBlock(nn.Module):
         h = self.proj(h)
 
         return x + h
+
+
+class TimestepEmbedSequential(nn.Sequential):
+    """Sequential block for modules with different inputs
+
+    Different modules are wrapped in this class because they have different
+    forward() signatures and this class calls them accordingly; for example, ResBlock
+    takes a feature map and a time embedding input but Attention only takes the feature map.
+    This class calls them accordingly
+
+    Based on: https://github.com/labmlai/annotated_deep_learning_paper_implementations/blob/master/labml_nn/diffusion/stable_diffusion/model/unet.py#L185
+    """
+
+    def forward(self, x, t_emb, cond=None):
+        for layer in self:
+            if isinstance(layer, ResBlock):
+                x = layer(x, t_emb)
+            elif isinstance(layer, MultiheadedAttentionFM):
+                x = layer(x)  # layer(x, cond)
+            else:
+                x = layer(x)
+        return x
 
 
 def init_weights(module):

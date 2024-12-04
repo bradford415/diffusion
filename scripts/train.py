@@ -166,9 +166,9 @@ def main(base_config_path: str, model_config_path: str = None):
         ema_decay=model_config["model_params"]["ema_decay"],
         ckpt_steps=train_args["ckpt_steps"],
         eval_intervals=train_args["eval_intervals"],
-        num_eval_samples=train_args["num_eval_samples"],
+        num_samples=train_args["num_samples"],
         logging_intervals=base_config["logging_intervals"],
-        eval_batch_size=train_args["sampling_batch_size"],
+        sample_batch_size=train_args["sampling_batch_size"],
     )
 
     # Save configuration files
