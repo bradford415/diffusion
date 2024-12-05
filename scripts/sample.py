@@ -1,20 +1,14 @@
 import datetime
 import logging
-import tracemalloc
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict
 
 import torch
 import yaml
 from fire import Fire
-from torch import nn
-from torch.utils.data import DataLoader
 
-from diffusion.data.cifar import build_cifar
 from diffusion.evaluate import sample
 from diffusion.models import DDPM, Unet
-from diffusion.models.layers import init_weights
-from diffusion.trainer import Trainer
 from diffusion.utils import reproduce
 
 model_map: Dict[str, Any] = {"unet": Unet}

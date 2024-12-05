@@ -1,8 +1,7 @@
 import datetime
 import logging
-import tracemalloc
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable
 
 import torch
 import yaml
