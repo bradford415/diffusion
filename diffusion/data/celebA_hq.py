@@ -1,5 +1,3 @@
-# Dataset class for the COCO dataset
-# Mostly taken from here: https://github.com/facebookresearch/detr/blob/main/datasets/coco.py
 import glob
 from pathlib import Path
 from typing import Union
@@ -9,6 +7,9 @@ import torch
 import torchvision.transforms as T
 from PIL import Image
 from torch.utils.data import Dataset
+
+
+# TODO: I don't think I ever really started this much, need to check
 
 
 class CelebFacesA(Dataset):

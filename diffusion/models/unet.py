@@ -23,7 +23,7 @@ class Unet(nn.Module):
     In DDPM the unet model is used to predict the noise, epsilon, added to an image
     s
 
-    This is the only training that is performed in diffusion.
+    This is the only training that is performed in DDPM.
     """
 
     def __init__(
