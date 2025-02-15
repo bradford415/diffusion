@@ -208,39 +208,39 @@ class Unet(nn.Module):
                     ),
                 ]  # TODO: might have to make attention conditional
                 curr_ch = ch_out
-            # level_layers = nn.ModuleList(
-            #     [
-            #         # Mid layers use ch_out and down layers use ch_in therefore we need ch_out+ch_in channels
-            #         # for channel-wise concatenation; the concatenation is done in forward()
-            #         ResBlock(
-            #             ch_out + ch_in,
-            #             ch_out,
-            #             time_emb_dim=time_dim,
-            #             dropout=dropout
-            #             # ch_in + ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout
-            #         ),
-            #         MultiheadedAttentionFM(
-            #             embed_ch=ch_out,
-            #             num_heads=layer_attn_heads,
-            #         ),
-            #         ResBlock(
-            #             ch_out + ch_in,
-            #             ch_out,
-            #             time_emb_dim=time_dim,
-            #             dropout=dropout
-            #             # ch_in + ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout
-            #         ),
-            #         (
-            #             MultiheadedAttentionFM(
-            #                 embed_ch=ch_out,
-            #                 num_heads=layer_attn_heads,
-            #             )
-            #             # AttnBlock(in_ch=ch_out)
-            #             if attn
-            #             else nn.Identity()
-            #         ),
-            #     ]
-            # )
+                # level_layers = nn.ModuleList(
+                #     [
+                #         # Mid layers use ch_out and down layers use ch_in therefore we need ch_out+ch_in channels
+                #         # for channel-wise concatenation; the concatenation is done in forward()
+                #         ResBlock(
+                #             ch_out + ch_in,
+                #             ch_out,
+                #             time_emb_dim=time_dim,
+                #             dropout=dropout
+                #             # ch_in + ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout
+                #         ),
+                #         MultiheadedAttentionFM(
+                #             embed_ch=ch_out,
+                #             num_heads=layer_attn_heads,
+                #         ),
+                #         ResBlock(
+                #             ch_out + ch_in,
+                #             ch_out,
+                #             time_emb_dim=time_dim,
+                #             dropout=dropout
+                #             # ch_in + ch_in, ch_in, time_emb_dim=time_dim, dropout=dropout
+                #         ),
+                #         (
+                #             MultiheadedAttentionFM(
+                #                 embed_ch=ch_out,
+                #                 num_heads=layer_attn_heads,
+                #             )
+                #             # AttnBlock(in_ch=ch_out)
+                #             if attn
+                #             else nn.Identity()
+                #         ),
+                #     ]
+                # )
 
                 # Upsample feature maps by a factor of 2 if not the last unet decoder level
                 if level != 0 and res_index == num_res_blocks:
@@ -252,7 +252,6 @@ class Unet(nn.Module):
                 #         nn.Conv2d(ch_out, ch_out, 3, padding=1)
                 #     )
                 self.up_layers.append(TimestepEmbedSequential(*layers))
-                
 
             # self.up_layers.append(level_layers)
 
@@ -260,9 +259,7 @@ class Unet(nn.Module):
         assert len(chs_down) == 0
 
         self.out_ch = image_ch * 1
-        self.final_res_block = ResBlock(
-            ch, ch, time_emb_dim=time_dim, dropout=dropout
-        )
+        self.final_res_block = ResBlock(ch, ch, time_emb_dim=time_dim, dropout=dropout)
 
         # Final convolution to return to rgb channels
         self.final_conv = nn.Conv2d(ch, self.out_ch, 1)
@@ -327,7 +324,7 @@ class Unet(nn.Module):
             x = torch.cat((x, feature_maps.pop()), dim=1)
             x = module(x, time)
 
-        #x = torch.cat((x, feature_maps.pop()), dim=1)
+        # x = torch.cat((x, feature_maps.pop()), dim=1)
         x = self.final_res_block(x, time)
         assert len(feature_maps) == 0
 

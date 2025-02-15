@@ -13,14 +13,21 @@ REQUIREMENTS := requirements.txt
 ## Recursively expanded variables
 python_source = ${PROJECT_NAME} scripts/  # Location of python files 
 activate = . .venv/bin/activate
+activate_mac = source .venv/bin/activate
 activate_windows = source .venv/Scripts/activate
 
 python = python3
 
-venv: ## Create virtual environment
+venv_linux: ## Create virtual environment
 	sudo apt install python3-venv
 	sudo apt install python3-pip
 	${python} -m venv .venv
+
+venv_windows: ## Create virtual environment
+	python -m venv .venv
+
+venv_mac: ## Create virtual environment
+	python3 -m venv .venv
 
 test: ## Put pytests here
 	. 
@@ -42,10 +49,23 @@ require:
 	pip install pip-tools
 	pip-compile --output-file requirements.txt pyproject.toml 
 
-install_reqs: ## Install for linux only; we also need to upgrade pip to support editable installation with only pyproject.toml file; cu118 has a bug with CNNs I think so use cu11
+install_reqs: ## Install for linux only; we also need to upgrade pip to support editable installation with only pyproject.toml file
 	${activate}
 	${python} -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu117  
 	${python} -m pip install -r ${REQUIREMENTS}
 	${python} -m pip install -e . --no-deps
 
-create: venv install_reqs ## Create virtual environment and install dependencies and the project itself
+install_reqs_mac: ## Install for linux only; we also need to upgrade pip to support editable installation with only pyproject.toml file
+	${activate}
+	${python} -m pip install --upgrade pip
+	${python} -m pip install -e .
+
+create_linux: venv_linux install_reqs ## Create virtual environment and install dependencies and the project itself
+
+create_windows: venv_windows install_reqs_windows  
+
+# Doesn't really work on mac, should probably install deps another way and just use make file for formatting
+create_mac: venv_mac install_reqs_mac
+
+activate_test: 
+	${activate_mac}
