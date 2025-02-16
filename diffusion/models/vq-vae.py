@@ -1,5 +1,7 @@
 from torch import nn
 
+from diffusion.models.layers import ResBlock
+
 
 class VQModel(nn.module):
     """Latent diffusion autoencoder based on VQ-VAE (Vector Quantized Variational Autoencoder)
@@ -28,7 +30,11 @@ class VQModel(nn.module):
 
 
 class Encoder(nn.Module):
-    """Encoder module for the VQ-VAE model"""
+    """Encoder module for the VQ-VAE model
+    
+    NOTE: no attention is used in the encoder downsampling based on this configuration:
+    https://github.com/CompVis/latent-diffusion/blob/a506df5756472e2ebaf9078affdde2c4f1502cd4/configs/latent-diffusion/celebahq-ldm-vq-4.yaml#L55
+    """
 
     def __init__(
         self,
@@ -80,7 +86,7 @@ class Encoder(nn.Module):
             res_blocks = nn.ModuleList()
 
             for _ in range(num_res_blocks):
-                res_blocks.append(ResBlock(in_ch=ch, out_ch=ch*ch_mult[res_i]))
+                res_blocks.append(ResBlock(in_ch=ch, out_ch=ch*ch_mult[res_i]), dropout=0.0)
                 ch = ch * ch_mult[res_i]
             
             # Create the resolution block module
@@ -97,17 +103,18 @@ class Encoder(nn.Module):
 
         # Final ResBlocks with attention; ch is the output channels after downsampling
         self.mid = nn.Module()
-        self.mid.block_1 =  ResBlock(ch, ch)
+        self.mid.block_1 =  ResBlock(ch, ch, dropout=0.0)
         self.mid.atten_1 = AttnBlock(ch)
-        self.mid.block_2 = ResBlock(ch, ch)
+        self.mid.block_2 = ResBlock(ch, ch, dropout=0.0)
 
         # Embed the feature maps to (b, 2*z_channels, h, w)
         self.norm_out = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True) # can make a wrapper fn if the num_groups needs to change
         self.conv_out = nn.Conv2d(ch, 2 * z_channels, kernel_size=3, stride=1, padding=1)
 
 
+        ####### START HERE, need to verify Downsample() and AttnBlock()
+
     def forward(self, x):
         """TODO"""
 
-        ########## START HERE implement forward
         pass

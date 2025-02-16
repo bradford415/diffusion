@@ -251,19 +251,22 @@ class MultiheadedAttentionFM(nn.Module):
 
 
 class ResBlock(nn.Module):
-    """TODO
+    """Resnet-based block with 2 convolutions, time-embeddings, and a skip connection.
+
+    This block is used in DDPM and latent diffusion, specifically in the unet and the encoder
+    component of the autoencoder; unets typically use the time embedding but the encoder does not
 
     Implementation based on: https://github.com/w86763777/pytorch-ddpm/blob/f804ccbd58a758b07f79a3b9ecdfb1beb67258f6/model.py#L116
     """
 
-    def __init__(self, in_ch, out_ch, time_emb_dim=None, dropout=0.0):
+    def __init__(self, in_ch: int, out_ch: int, time_emb_dim: int = None, dropout: float = 0.0, eps = 1e-6):
         """TODO
         Args:
-        in_ch:
-        out_ch:
-        time_emb_dim: dimension size of the input time embedding; this is determined
-                      at the start of unet when the timestep is intially projected
-
+            in_ch: TODO
+            out_ch:
+            time_emb_dim: dimension size of the input time embedding; this is determined
+                        at the start of unet when the timestep is intially projected
+            eps: a very small value added to the denominator for numerical stability
         """
         super().__init__()
 
@@ -273,20 +276,6 @@ class ResBlock(nn.Module):
                 nn.Linear(time_emb_dim, out_ch),  # nn.Linear(time_emb_dim, out_ch)
             )
 
-        # NOTE: It looks like the original implementation reverses the order i.e., conv2d last: https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L45
-        #       but many implementations are written differently and more often Conv2d seems to be first
-        # self.block1 = nn.Sequential(
-        #     nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
-        #     nn.GroupNorm(32, out_ch),
-        #     nn.SiLU(),
-        #     nn.Dropout(dropout),
-        # )
-        # self.block2 = nn.Sequential(
-        #     nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
-        #     nn.GroupNorm(32, out_ch),
-        #     nn.SiLU(),
-        #     nn.Dropout(dropout),
-        # )
         self.block1 = nn.Sequential(
             nn.GroupNorm(32, in_ch),
             nn.SiLU(),
@@ -300,27 +289,28 @@ class ResBlock(nn.Module):
             nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
         )
 
-        # Whether to add a point-wise conv skip connection or a regular skip connection;
+        # Whether to use point-wise conv skip connection or a regular skip connection;
         # in the default parameters the point-wise conv is applied at the end of each unet level
         if in_ch != out_ch:
             self.shortcut = nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=1, padding=0)
         else:
             self.shortcut = nn.Identity()
 
-    def forward(self, x, time_emb):
-        """Forward pass through ResNetBlock with time embeddings
+    def forward(self, x: torch.Tensor, time_emb = None):
+        """Forward pass through ResBlock with time embeddings
 
         Args:
-            x: Feature maps (B, C, H, W)
-            time_emb: (B, time_dim) TODO: Verify this shape
+            x: Feature maps (b, c, h, w)
+            time_emb: (b, time_dim) TODO: Verify this shape
         """
 
         h = self.block1(x)
 
-        # Add projected time embeddings to the feature maps ;
+        # Add projected time embeddings to the feature maps; 
         # (b, out_ch, h, w) + (b, out_ch, 1, 1)
         # this broadcasts the value of the time_emb accross the feature map h & w
-        h += self.time_proj(time_emb)[:, :, None, None]
+        if self.time_proj is not None:
+            h += self.time_proj(time_emb)[:, :, None, None]
 
         h = self.block2(h)
         h = h + self.shortcut(x)
