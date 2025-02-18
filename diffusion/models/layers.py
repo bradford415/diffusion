@@ -259,7 +259,14 @@ class ResBlock(nn.Module):
     Implementation based on: https://github.com/w86763777/pytorch-ddpm/blob/f804ccbd58a758b07f79a3b9ecdfb1beb67258f6/model.py#L116
     """
 
-    def __init__(self, in_ch: int, out_ch: int, time_emb_dim: int = None, dropout: float = 0.0, eps = 1e-6):
+    def __init__(
+        self,
+        in_ch: int,
+        out_ch: int,
+        time_emb_dim: int = None,
+        dropout: float = 0.0,
+        eps=1e-6,
+    ):
         """TODO
         Args:
             in_ch: TODO
@@ -296,7 +303,7 @@ class ResBlock(nn.Module):
         else:
             self.shortcut = nn.Identity()
 
-    def forward(self, x: torch.Tensor, time_emb = None):
+    def forward(self, x: torch.Tensor, time_emb=None):
         """Forward pass through ResBlock with time embeddings
 
         Args:
@@ -306,7 +313,7 @@ class ResBlock(nn.Module):
 
         h = self.block1(x)
 
-        # Add projected time embeddings to the feature maps; 
+        # Add projected time embeddings to the feature maps;
         # (b, out_ch, h, w) + (b, out_ch, 1, 1)
         # this broadcasts the value of the time_emb accross the feature map h & w
         if self.time_proj is not None:
@@ -319,22 +326,36 @@ class ResBlock(nn.Module):
 
 
 class Downsample(nn.Module):
-    """Downsample feature map; this is used at the last layer of each unet encoder level"""
+    """Downsample feature map; this is used at the last layer of each unet encoder resolution
+    and the encoder component of the autoencoder.
+
+    NOTE: this module uses asymmetrical padding; the latent/stable diffusion
+          source code uses asymmetrical padding which pads the right and bottom of
+          the image with 0s compared to a typical approach where the entire image boudary
+          is padded with 0s; I believe the only difference is that the kernel center will start
+          at img[1,1] instead of img[0,0] however I'm not entirely sure of the advantage of this
+          (both methods have the same output shape); DDPM does not use asymmetrical padding but
+          I'll change it here anyways and see if DDPM has the same result;
+          there is some questions here but no one really seems to know why: 
+          https://github.com/Stability-AI/stablediffusion/issues/355
+    """
 
     def __init__(self, ch: torch.Tensor):
         """Initialize downsample module
 
         Args:
-            in_ch: The number of channels in the input feature map
-            out_ch: The number of output channels after convolution
+            ch: the input and output channels of the feature map; for this module
+                the in_channels=out_channels
         """
         super().__init__()
 
-        # Downsample by factor of 2
-        self.conv = nn.Conv2d(ch, ch, kernel_size=3, stride=2, padding=1)
+        # Downsample by factor of 2; do not use padding here so we can apply asymmetrical padding in forward
+        self.conv = nn.Conv2d(ch, ch, kernel_size=3, stride=2, padding=0)
 
     def forward(self, x):
         """Downsample the feature map"""
+        # Pad the right and bottom of the feature map with 0s
+        x = F.pad(x, (0, 1, 0, 1), mode="constant", value=0)
         x = self.conv(x)
         return x
 

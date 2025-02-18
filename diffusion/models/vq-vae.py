@@ -1,6 +1,6 @@
 from torch import nn
 
-from diffusion.models.layers import ResBlock
+from diffusion.models.layers import ResBlock, Downsample
 
 
 class VQModel(nn.module):
@@ -31,7 +31,7 @@ class VQModel(nn.module):
 
 class Encoder(nn.Module):
     """Encoder module for the VQ-VAE model
-    
+
     NOTE: no attention is used in the encoder downsampling based on this configuration:
     https://github.com/CompVis/latent-diffusion/blob/a506df5756472e2ebaf9078affdde2c4f1502cd4/configs/latent-diffusion/celebahq-ldm-vq-4.yaml#L55
     """
@@ -59,7 +59,7 @@ class Encoder(nn.Module):
             ch_mult: multiplier for ch to determine the number of channels in subsequent layers
             num_res_blocks: number of residual blocks in each resolution
             z_channels: number of channels in the latent/embedding space;
-                        NOTE: z_channels is hardcoded to multiply by 2 at the end of this module 
+                        NOTE: z_channels is hardcoded to multiply by 2 at the end of this module
                               based on the implementation, so z_channels will actually be z_channels * 2
 
         """
@@ -86,9 +86,11 @@ class Encoder(nn.Module):
             res_blocks = nn.ModuleList()
 
             for _ in range(num_res_blocks):
-                res_blocks.append(ResBlock(in_ch=ch, out_ch=ch*ch_mult[res_i]), dropout=0.0)
+                res_blocks.append(
+                    ResBlock(in_ch=ch, out_ch=ch * ch_mult[res_i]), dropout=0.0
+                )
                 ch = ch * ch_mult[res_i]
-            
+
             # Create the resolution block module
             down = nn.Module()
             down.block = res_blocks
@@ -103,14 +105,17 @@ class Encoder(nn.Module):
 
         # Final ResBlocks with attention; ch is the output channels after downsampling
         self.mid = nn.Module()
-        self.mid.block_1 =  ResBlock(ch, ch, dropout=0.0)
+        self.mid.block_1 = ResBlock(ch, ch, dropout=0.0)
         self.mid.atten_1 = AttnBlock(ch)
         self.mid.block_2 = ResBlock(ch, ch, dropout=0.0)
 
         # Embed the feature maps to (b, 2*z_channels, h, w)
-        self.norm_out = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True) # can make a wrapper fn if the num_groups needs to change
-        self.conv_out = nn.Conv2d(ch, 2 * z_channels, kernel_size=3, stride=1, padding=1)
-
+        self.norm_out = nn.GroupNorm(
+            num_groups=32, num_channels=in_channels, eps=1e-6, affine=True
+        )  # can make a wrapper fn if the num_groups needs to change
+        self.conv_out = nn.Conv2d(
+            ch, 2 * z_channels, kernel_size=3, stride=1, padding=1
+        )
 
         ####### START HERE, need to verify Downsample() and AttnBlock()
 
