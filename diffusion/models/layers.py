@@ -114,7 +114,7 @@ class Attention(nn.Module):
             queries: Input tensor to compute the attention of
             keys: Input tensor to compute the attention of
             values: Input tensor to compute the context of; for self-attention this should be the same
-                    as q & v
+                    as q & k
             mask: Optional tensor containing indices to be masked; typically used in decoders for NLP
 
         Returns:
@@ -377,15 +377,23 @@ class Upsample(nn.Module):
 
 
 class AttnBlock(nn.Module):
-    """Directly from github code"""
+    """Attention block for the middle of the Unet and the encoder; not multi-headed"""
 
     def __init__(self, in_ch):
+        """Initialize the attention block
+        
+        Args:
+            in_ch: number of input channels of the feature map; this will also be the number
+                   of output channels
+        """
         super().__init__()
         self.group_norm = nn.GroupNorm(32, in_ch)
-        self.proj_q = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
-        self.proj_k = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
-        self.proj_v = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
-        self.proj = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
+        
+        self.proj_q = nn.Conv2d(in_ch, in_ch, kernel_size=1, stride=1, padding=0)
+        self.proj_k = nn.Conv2d(in_ch, in_ch, kernel_size=1, stride=1, padding=0)
+        self.proj_v = nn.Conv2d(in_ch, in_ch, kernel_size=1, stride=1, padding=0)
+        
+        self.proj = nn.Conv2d(in_ch, in_ch, kernel_size=1, stride=1, padding=0)
         self.initialize()
 
     def initialize(self):
@@ -395,22 +403,36 @@ class AttnBlock(nn.Module):
         init.xavier_uniform_(self.proj.weight, gain=1e-5)
 
     def forward(self, x):
+        """Compute self-attention of the feature map
+        
+        Args:
+            x: feature map (b, c, h, w)
+        """
         B, C, H, W = x.shape
         h = self.group_norm(x)
         q = self.proj_q(h)
         k = self.proj_k(h)
         v = self.proj_v(h)
 
+        # (b, c, h, w) -> (b, h, w, c) -> (b, h*w, c); intuitively, each feature has dimension c
         q = q.permute(0, 2, 3, 1).view(B, H * W, C)
         k = k.view(B, C, H * W)
+        
+        # Compute attention
         w = torch.bmm(q, k) * (int(C) ** (-0.5))
         assert list(w.shape) == [B, H * W, H * W]
+        
         w = F.softmax(w, dim=-1)
-
+        
         v = v.permute(0, 2, 3, 1).view(B, H * W, C)
+        
+        # Attend to values
         h = torch.bmm(w, v)
         assert list(h.shape) == [B, H * W, C]
+        
+        # return back to original input shape (b, h, w, c) -> (b, c, h, w)
         h = h.view(B, H, W, C).permute(0, 3, 1, 2)
+
         h = self.proj(h)
 
         return x + h

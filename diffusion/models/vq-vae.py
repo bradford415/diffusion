@@ -1,6 +1,6 @@
 from torch import nn
 
-from diffusion.models.layers import ResBlock, Downsample
+from diffusion.models.layers import ResBlock, Downsample, AttnBlock
 
 
 class VQModel(nn.module):
@@ -117,7 +117,7 @@ class Encoder(nn.Module):
             ch, 2 * z_channels, kernel_size=3, stride=1, padding=1
         )
 
-        ####### START HERE, need to verify Downsample() and AttnBlock()
+        ####### START HERE, need to verify AttnBlock()
 
     def forward(self, x):
         """TODO"""
