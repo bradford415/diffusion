@@ -393,8 +393,8 @@ class AttnBlock(nn.Module):
         self.proj_k = nn.Conv2d(in_ch, in_ch, kernel_size=1, stride=1, padding=0)
         self.proj_v = nn.Conv2d(in_ch, in_ch, kernel_size=1, stride=1, padding=0)
         
-        self.proj = nn.Conv2d(in_ch, in_ch, kernel_size=1, stride=1, padding=0)
-        self.initialize()
+        self.proj_out = nn.Conv2d(in_ch, in_ch, kernel_size=1, stride=1, padding=0)
+        #self.initialize()
 
     def initialize(self):
         for module in [self.proj_q, self.proj_k, self.proj_v, self.proj]:
@@ -427,13 +427,15 @@ class AttnBlock(nn.Module):
         v = v.permute(0, 2, 3, 1).view(B, H * W, C)
         
         # Attend to values
+        # NOTE: this should be the same as the latent diffusion implementation: https://github.com/CompVis/latent-diffusion/blob/main/ldm/modules/diffusionmodules/model.py#L196C10-L196C11
+        #       it looks like they use the matrix multiplication property (AB)` = B`A`
         h = torch.bmm(w, v)
         assert list(h.shape) == [B, H * W, C]
         
         # return back to original input shape (b, h, w, c) -> (b, c, h, w)
         h = h.view(B, H, W, C).permute(0, 3, 1, 2)
 
-        h = self.proj(h)
+        h = self.proj_out(h)
 
         return x + h
 

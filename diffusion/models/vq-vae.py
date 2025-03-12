@@ -117,7 +117,7 @@ class Encoder(nn.Module):
             ch, 2 * z_channels, kernel_size=3, stride=1, padding=1
         )
 
-        ####### START HERE, need to verify AttnBlock()
+        ####### START HERE, implement forward
 
     def forward(self, x):
         """TODO"""
