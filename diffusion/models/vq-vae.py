@@ -1,6 +1,7 @@
+import torch
 from torch import nn
 
-from diffusion.models.layers import ResBlock, Downsample, AttnBlock
+from diffusion.models.layers import AttnBlock, Downsample, ResBlock, Upsample
 
 
 class VQModel(nn.module):
@@ -55,12 +56,14 @@ class Encoder(nn.Module):
         Args:
             in_channels: number of channels in the input image (e.g., 3 for RGB)
             resolution: TODO
-            ch: TODO
+            ch: base channels to be multiplied by ch_mult
             ch_mult: multiplier for ch to determine the number of channels in subsequent layers
             num_res_blocks: number of residual blocks in each resolution
             z_channels: number of channels in the latent/embedding space;
                         NOTE: z_channels is hardcoded to multiply by 2 at the end of this module
                               based on the implementation, so z_channels will actually be z_channels * 2
+            attn_resolution: TODO
+            dropout: the dropout probability for each ResBlock; this is typically 0.0 for the encoder
 
         """
         super().__init__()
@@ -87,9 +90,9 @@ class Encoder(nn.Module):
 
             for _ in range(num_res_blocks):
                 res_blocks.append(
-                    ResBlock(in_ch=ch, out_ch=ch * ch_mult[res_i]), dropout=0.0
+                    ResBlock(in_ch=ch, out_ch=channels_list[res_i + 1], dropout=dropout)
                 )
-                ch = ch * ch_mult[res_i]
+                ch = channels_list[res_i + 1]
 
             # Create the resolution block module
             down = nn.Module()
@@ -105,21 +108,160 @@ class Encoder(nn.Module):
 
         # Final ResBlocks with attention; ch is the output channels after downsampling
         self.mid = nn.Module()
-        self.mid.block_1 = ResBlock(ch, ch, dropout=0.0)
+        self.mid.block_1 = ResBlock(ch, ch, dropout=dropout)
         self.mid.atten_1 = AttnBlock(ch)
-        self.mid.block_2 = ResBlock(ch, ch, dropout=0.0)
+        self.mid.block_2 = ResBlock(ch, ch, dropout=dropout)
 
         # Embed the feature maps to (b, 2*z_channels, h, w)
         self.norm_out = nn.GroupNorm(
-            num_groups=32, num_channels=in_channels, eps=1e-6, affine=True
+            num_groups=32, num_channels=ch, eps=1e-6, affine=True
         )  # can make a wrapper fn if the num_groups needs to change
+        self.activation = nn.SiLU()
         self.conv_out = nn.Conv2d(
             ch, 2 * z_channels, kernel_size=3, stride=1, padding=1
         )
 
-        ####### START HERE, implement forward
+    def forward(self, img: torch.Tensor):
+        """Encodes the image into a lower dimensional latent space
 
-    def forward(self, x):
-        """TODO"""
+        Args:
+            img: the input image to encode to a latent space (b, c, h, w)
+        """
 
-        pass
+        x = self.conv_in(img)
+
+        # Loop through down blocks at every resolution; each down block has res_blocks and a downsample
+        for down in self.down:
+
+            for res_block in down.block:
+                x = res_block(x)
+
+            x = down.downsample(x)
+
+        # Final encoder ResNet blocks w/ attention; no downsampling
+        x = self.mid.block_1(x)
+        x = self.mid.attn_1(x)
+        x = self.mid.block_2(x)
+
+        # Normalize and map to embedding space
+        x = self.norm_out(x)
+        x = self.activation(x)
+        x = self.conv_out(x)
+
+        return x
+
+
+class Decoder(nn.Module):
+    """Decoder module for the VQ-VAE model
+    
+    Used to upsample the embedding 
+    """
+
+    def __init__(
+        self,
+        *,
+        ch: int,
+        ch_mult: list[int] = [1, 2, 4, 8],
+        num_res_blocks: int,
+        out_ch: int,
+        z_channels: int,
+        dropout: float = 0.0
+    ):
+        """Initializes the decoder module
+
+        Args:
+            ch: base channels to be multiplied by ch_mult
+            ch_mult: multiplier for ch to determine the number of channels in subsequent layers
+            num_res_blocks: number of residual blocks in each resolution
+            out_ch: the number of channels in the output image (e.g., 3 for RGB)
+            z_channels: number of channels in the latent/embedding space;
+            attn_resolution: TODO
+            dropout: the dropout probability for each ResBlock; this is typically 0.0 for the encoder
+
+        """
+        super().__init__()
+        self.ch = ch
+        num_resolutions = len(ch_mult)
+
+        # NOTE: We don't need to prepend a 1 like in the Encoder
+        channel_list = [m * ch for m in ch_mult]
+
+        # The starting ch will begin in reverse order from the encoder
+        ch = channel_list[-1]
+
+        self.conv_in = nn.Conv2d(z_channels, ch, kernel_size=3, stride=1, padding=1)
+
+        # ResNet blocks with attention
+        self.mid = nn.Module()
+        self.mid.block_1 = ResBlock(ch, ch, dropout=dropout)
+        self.mid.attn_1 = AttnBlock(ch)
+        self.mid.block_2 = ResBlock(ch, ch, dropout=dropout)
+
+        # Stores the main decoder blocks
+        self.up = nn.ModuleList()
+
+        for res_i in reversed(range(num_resolutions)):
+
+            res_blocks = nn.ModuleList()
+            # Decoder has an additional ResBlock at each resolution
+            for _ in range(num_res_blocks + 1):
+                res_blocks.append(
+                    ResBlock(in_ch=ch, out_ch=channel_list[res_i], dropout=dropout)
+                )
+                ch = channel_list[res_i]
+
+            up = nn.Module()
+            up.block = res_blocks
+
+            # Upsample at the end of each resolution except the last
+            if res_i != 0:
+                up.upsample = Upsample(scale_factor=2, mode="nearest")
+            else:
+                up.upsample = nn.Identity()
+
+            # Prepend to be consistent with the checkpoint; I think this means the weights
+            # layers are named in increasing order starting with the lowest res, since we prepend
+            # we need to loop through these modules in reverse order
+            # TODO: understand why this is necessary
+            self.up.insert(0, up)
+
+        # Map to image space; i.e., 3 channels for RGB
+        self.activation = nn.SiLU()
+        self.norm_out = nn.GroupNorm(
+            num_groups=32, num_channels=ch, eps=1e-6, affine=True
+        )  
+        self.conv_out = nn.Conv2d(ch, out_ch, kernel_size=3, stride=1, padding=1)
+
+
+    def forward(self, z_emb):
+        """Decode the latent vector back to the image space 
+
+        TODO: understand if its the denoised latent vector or the noise latent vector
+              or something else
+
+        Args:
+            z_emb: the denoised latent vector; TODO: verify this is accurate and add a little more
+        """
+
+        x = self.conv_in(z_emb)
+
+        # ResNet blocks w/ attention
+        x = self.mid.block_1(x)
+        x = self.mid.attn_1(x)
+        x = self.mid.block_2(x)
+        
+        # Loop through up blocks for each resolution; up 
+        for up in reversed(self.up):
+            for res_block in up.block:
+                x = res_block(x)
+
+            x = up.upsample(x)
+
+        # Normalie and map to image space
+        x = self.norm_out(x)
+        x = self.activation(x)
+        x = self.conv_out(x)
+
+        
+            
+

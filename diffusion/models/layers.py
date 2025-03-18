@@ -336,7 +336,7 @@ class Downsample(nn.Module):
           at img[1,1] instead of img[0,0] however I'm not entirely sure of the advantage of this
           (both methods have the same output shape); DDPM does not use asymmetrical padding but
           I'll change it here anyways and see if DDPM has the same result;
-          there is some questions here but no one really seems to know why: 
+          there is some questions here but no one really seems to know why:
           https://github.com/Stability-AI/stablediffusion/issues/355
     """
 
@@ -381,20 +381,20 @@ class AttnBlock(nn.Module):
 
     def __init__(self, in_ch):
         """Initialize the attention block
-        
+
         Args:
             in_ch: number of input channels of the feature map; this will also be the number
                    of output channels
         """
         super().__init__()
         self.group_norm = nn.GroupNorm(32, in_ch)
-        
+
         self.proj_q = nn.Conv2d(in_ch, in_ch, kernel_size=1, stride=1, padding=0)
         self.proj_k = nn.Conv2d(in_ch, in_ch, kernel_size=1, stride=1, padding=0)
         self.proj_v = nn.Conv2d(in_ch, in_ch, kernel_size=1, stride=1, padding=0)
-        
+
         self.proj_out = nn.Conv2d(in_ch, in_ch, kernel_size=1, stride=1, padding=0)
-        #self.initialize()
+        # self.initialize()
 
     def initialize(self):
         for module in [self.proj_q, self.proj_k, self.proj_v, self.proj]:
@@ -404,7 +404,7 @@ class AttnBlock(nn.Module):
 
     def forward(self, x):
         """Compute self-attention of the feature map
-        
+
         Args:
             x: feature map (b, c, h, w)
         """
@@ -417,21 +417,21 @@ class AttnBlock(nn.Module):
         # (b, c, h, w) -> (b, h, w, c) -> (b, h*w, c); intuitively, each feature has dimension c
         q = q.permute(0, 2, 3, 1).view(B, H * W, C)
         k = k.view(B, C, H * W)
-        
+
         # Compute attention
         w = torch.bmm(q, k) * (int(C) ** (-0.5))
         assert list(w.shape) == [B, H * W, H * W]
-        
+
         w = F.softmax(w, dim=-1)
-        
+
         v = v.permute(0, 2, 3, 1).view(B, H * W, C)
-        
+
         # Attend to values
         # NOTE: this should be the same as the latent diffusion implementation: https://github.com/CompVis/latent-diffusion/blob/main/ldm/modules/diffusionmodules/model.py#L196C10-L196C11
         #       it looks like they use the matrix multiplication property (AB)` = B`A`
         h = torch.bmm(w, v)
         assert list(h.shape) == [B, H * W, C]
-        
+
         # return back to original input shape (b, h, w, c) -> (b, c, h, w)
         h = h.view(B, H, W, C).permute(0, 3, 1, 2)
 
