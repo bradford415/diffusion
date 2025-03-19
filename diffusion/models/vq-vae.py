@@ -25,6 +25,8 @@ class VQModel(nn.module):
 
         self.encoder = Encoder()
         self.decoder = Decoder()
+        
+        ################### START HER #################
 
     def forward(self, x):
         pass
@@ -261,6 +263,8 @@ class Decoder(nn.Module):
         x = self.norm_out(x)
         x = self.activation(x)
         x = self.conv_out(x)
+        
+        return x
 
         
             
