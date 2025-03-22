@@ -5,18 +5,23 @@ from diffusion.models.layers import AttnBlock, Downsample, ResBlock, Upsample
 
 
 class VQModel(nn.module):
-    """Latent diffusion autoencoder based on VQ-VAE (Vector Quantized Variational Autoencoder)
+    """Latent diffusion autoencoder based on VQ-VAE (Vector Quantized Variational Autoencoder);
+    maps to a discrete latent space
 
     Used to encode the input images to a lower-dimensional latent space and then decode them
     back to the original image space after performing diffusion.
     """
 
-    def __init__(self, embed_dim, n_embed):
+    def __init__(
+        self, *, embed_dim: int, n_embed: int, z_ch: int, double_z: bool = False
+    ):
         """Initialize the VQ Autoencoder
 
         Args:
             embed_dim: TODO
             n_embed: TODO
+            z_channels: number of channels in the latent/embedding space
+            double_z: whether to double the number of channels in the latent space
         """
         super().__init__()
 
@@ -25,8 +30,88 @@ class VQModel(nn.module):
 
         self.encoder = Encoder()
         self.decoder = Decoder()
+
+        # Conv to map from the emb space to the quantized emb space moments (mean & log variance);
+        # for a probability distribution, 1st moment = mean 2nd moment = variance;
+        # https://en.wikipedia.org/wiki/Moment_(mathematics);
+        # emb_space = continuous space, quantized_emb_space = discrete space
+        self.quant_conv = nn.Conv2d(z_ch, embed_dim, kernel_size=1, stride=1)
+
+        # Conv to map from quantized space back to embedding space
+        self.post_quant_conv = nn.Conv2d(embed_dim, z_ch, kernel_size=1, stride=1)
+
+    def encode(self, img: torch.Tensor):
+        """Encode the image to a lower-dimensional latent space using the Encoder() module
+
+        Args:
+            img: the input image to encode to a latent space (b, c, h, w)
+        """
+        # Encode the image to a lower-dimensional latent space (b, c, h, w)
+        z = self.encoder(img)
+
+        # GEt the moments of the quantized embedding space
+        moments = self.quant_conv(z)
         
-        ################### START HER #################
+        return
+
+    def forward(self, x):
+        pass
+
+
+class AutoencoderKL(nn.module):
+    """Latent diffusion autoencoder based on KL-divergence VAE; maps to continous latent space
+
+    Used to encode the input images to a lower-dimensional, continuous latent space and then 
+    decode them back to the original image space after performing diffusion.
+
+    KL-divergence VAE is a type of variational autoencoder that uses the KL-divergence
+    loss to minimize the distance between the latent distribution and the prior distribution.
+
+    """
+
+    def __init__(
+        self, *, embed_dim: int, n_embed: int, z_ch: int, double_z: bool = False
+    ):
+        """Initialize the KL VAE
+
+        Args:
+            embed_dim: TODO
+            n_embed: TODO
+            z_channels: number of channels in the latent/embedding space
+            double_z: whether to double the number of channels in the latent space
+        """
+        super().__init__()
+
+        assert double_z, "double_z should be True for the KL VAE"
+
+        self.embed_dim = embed_dim
+        self.n_embed = n_embed
+
+        self.encoder = Encoder()
+        self.decoder = Decoder()
+
+        # Conv to map from the emb space to the quantized emb space moments (mean & log variance);
+        # for a probability distribution, 1st moment = mean 2nd moment = variance;
+        # https://en.wikipedia.org/wiki/Moment_(mathematics);
+        # emb_space = continuous space, quantized_emb_space = discrete space
+        self.quant_conv = nn.Conv2d(2 * z_ch, 2 * embed_dim, kernel_size=1, stride=1)
+
+        # Conv to map from quantized space back to embedding space
+        self.post_quant_conv = nn.Conv2d(embed_dim, z_ch, kernel_size=1, stride=1)
+
+    def encode(self, img: torch.Tensor):
+        """Encode the image to a lower-dimensional latent space using the Encoder() module
+
+        Args:
+            img: the input image to encode to a latent space (b, c, h, w)
+        """
+        # Encode the image to a lower-dimensional latent space (b, c, h, w)
+        z = self.encoder(img)
+
+        # Get the moments of the quantized embedding space
+        moments = self.quant_conv(z)
+        
+        return
 
     def forward(self, x):
         pass
@@ -48,7 +133,8 @@ class Encoder(nn.Module):
         out_ch: int,
         ch_mult: list[int] = [1, 2, 4, 8],
         num_res_blocks,
-        z_channels,
+        z_channels: int,
+        double_z: bool,
         attn_resoluion,
         dropout=0.0,
         resample_with_conv=True
@@ -62,8 +148,8 @@ class Encoder(nn.Module):
             ch_mult: multiplier for ch to determine the number of channels in subsequent layers
             num_res_blocks: number of residual blocks in each resolution
             z_channels: number of channels in the latent/embedding space;
-                        NOTE: z_channels is hardcoded to multiply by 2 at the end of this module
-                              based on the implementation, so z_channels will actually be z_channels * 2
+            double_z: whether to double the number of channels in the latent space; this is typically True for
+                      the KL autoencoder but False for the VQ autoencoder
             attn_resolution: TODO
             dropout: the dropout probability for each ResBlock; this is typically 0.0 for the encoder
 
@@ -74,6 +160,9 @@ class Encoder(nn.Module):
         self.num_res_blocks = num_res_blocks
         self.resolution = resolution
         self.in_channels = in_channels
+
+        # Double the latent chs if double_z is True
+        z_channels = z_channels * 2 if double_z else z_channels
 
         # Prepend a 1 to the ch_mult allowing us to loop over the resolutions in a nice way
         ch_mult = [1] + ch_mult
@@ -155,8 +244,8 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     """Decoder module for the VQ-VAE model
-    
-    Used to upsample the embedding 
+
+    Used to upsample the embedding
     """
 
     def __init__(
@@ -231,12 +320,11 @@ class Decoder(nn.Module):
         self.activation = nn.SiLU()
         self.norm_out = nn.GroupNorm(
             num_groups=32, num_channels=ch, eps=1e-6, affine=True
-        )  
+        )
         self.conv_out = nn.Conv2d(ch, out_ch, kernel_size=3, stride=1, padding=1)
 
-
     def forward(self, z_emb):
-        """Decode the latent vector back to the image space 
+        """Decode the latent vector back to the image space
 
         TODO: understand if its the denoised latent vector or the noise latent vector
               or something else
@@ -251,8 +339,8 @@ class Decoder(nn.Module):
         x = self.mid.block_1(x)
         x = self.mid.attn_1(x)
         x = self.mid.block_2(x)
-        
-        # Loop through up blocks for each resolution; up 
+
+        # Loop through up blocks for each resolution; up
         for up in reversed(self.up):
             for res_block in up.block:
                 x = res_block(x)
@@ -263,9 +351,45 @@ class Decoder(nn.Module):
         x = self.norm_out(x)
         x = self.activation(x)
         x = self.conv_out(x)
-        
+
         return x
 
-        
-            
 
+class DiagonalGaussianDistribution(nn.Module):
+    """TODO"""
+
+    def __init__(self, parameters: torch.Tensor):
+        """Initialize the DiagonalGaussianDistribution module
+
+        A diagonal gaussian distribution is used mostly for computational efficiency;
+        this assumes no correlation between latent variables.
+
+        parameters: an embeded feature map which represents the mean and log variance of the distribution;
+                    the feature maps are of shape (b, 2 * z_channels, h, w) where the first
+                    half of the z_chs are the means and the second half are the log variances
+        """
+        super().__init__()
+        
+        # Extract the means and log variances from the parameters; clip the log variances
+        self.mean, log_variance = torch.chunk(parameters, 2, dim=1)
+        self.log_variance = log_variance.clamp(-30.0, 20.0)
+
+        # Compute the std dev; reminder std_dev = variance^0.5 and torch.exp gets rid of the log
+        self.std = torch.exp(0.5 * self.log_variance)
+
+    def sample(self) -> torch.Tensor:
+        """Sample from a gaussian distribution with the learned mean and std
+
+        Creates a random tensor sampled from a standard normal distribution and scales it by the
+        learned std dev and adds the learned mean; because a standard normal distribution has 
+        std_dev=1 and mean=0, the multiplication scales the std_dev by 1 * self.std
+        and addition adds the mean by 0 + self.mean
+
+        This method implements the reparameterization trick used in VAEs and latent diffusion
+        z=μ+σ⋅ϵ,ϵ~N(0,I) where I represents the identity matrix which indicates that the
+        covariance structure is diagonal and independent.
+         
+        retuns:
+            shape: (b, z_channels, h, w)
+        """
+        return self.mean + self.std * torch.randn_like(self.std)
