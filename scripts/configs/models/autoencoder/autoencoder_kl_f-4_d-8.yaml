@@ -1,0 +1,7 @@
+# Configuration file for the KL Autoencoder
+# Filename convention: 
+#   - autoencoder_{vae_type}_f-{downsample_factor}_d-{emb_dim}.yaml
+#   - the downsample factor is determined by determined by 2^(len(ch_mults) - 1);
+#     this is the number of encoder levels
+---
+### TODO start here and work on autoencoder config

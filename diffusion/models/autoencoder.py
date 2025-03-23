@@ -4,9 +4,100 @@ from torch import nn
 from diffusion.models.layers import AttnBlock, Downsample, ResBlock, Upsample
 
 
+class AutoencoderKL(nn.module):
+    """Latent diffusion autoencoder based on KL-divergence VAE; maps to continous latent space
+
+    Used to encode the input images to a lower-dimensional, continuous latent space and then 
+    decode them back to the original image space after performing diffusion.
+
+    NOTE: TODO write briefly that this module uses 'soft'quantization but is still using
+          the continous latent space
+
+    KL-divergence VAE is a type of variational autoencoder that uses the KL-divergence
+    loss to minimize the distance between the latent distribution and the prior distribution.
+
+    """
+
+    def __init__(
+        self, *, embed_dim: int, n_embed: int, z_ch: int, double_z: bool = False
+    ):
+        """Initialize the KL VAE
+
+        Args:
+            embed_dim: TODO
+            n_embed: TODO
+            z_channels: number of channels in the latent/embedding space
+            double_z: whether to double the number of channels in the latent space
+        """
+        super().__init__()
+
+        assert double_z, "double_z should be True for the KL VAE"
+
+        self.embed_dim = embed_dim
+        self.n_embed = n_embed
+
+        self.encoder = Encoder()
+        self.decoder = Decoder()
+
+        # Conv to map from the emb space to the quantized emb space moments (mean & log variance);
+        # for a probability distribution, 1st moment = mean 2nd moment = variance;
+        # https://en.wikipedia.org/wiki/Moment_(mathematics);
+        # emb_space = continuous space, quantized_emb_space = discrete space
+        self.quant_conv = nn.Conv2d(2 * z_ch, 2 * embed_dim, kernel_size=1, stride=1)
+
+        # Conv to map from quantized space back to embedding space
+        self.post_quant_conv = nn.Conv2d(embed_dim, z_ch, kernel_size=1, stride=1)
+
+    def encode(self, img: torch.Tensor) -> "DiagonalGaussianDistribution":
+        """Encode the image to a lower-dimensional latent space using the Encoder() module
+
+        Args:
+            img: the input image to encode to a latent space (b, c, h, w)
+        """
+        # Encode the image to a lower-dimensional latent space (b, c, h, w)
+        z = self.encoder(img)
+
+        # Get the moments of the quantized embedding space; mean and log variance
+        moments = self.quant_conv(z)
+
+        posterior = DiagonalGaussianDistribution(moments)
+        
+        return posterior
+    
+
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
+        """Decodes the latent vector back to the image space using the Decoder() module
+
+        Args:
+            z: the latent vector (b, emb_ch, h, w); TODO maybe make shape more specific
+
+        Returns:
+            the reconstructed image from the latent space (b, c, h, w) where c=3 for rgb
+        """
+        #  Map to the embedding space from the quantized representation
+        z = self.post_quant_conv(z)
+
+        # Return to the image space
+        img = self.decoder(z)
+        
+        return img
+
+    def forward(self, x):
+        pass
+
+
 class VQModel(nn.module):
     """Latent diffusion autoencoder based on VQ-VAE (Vector Quantized Variational Autoencoder);
     maps to a discrete latent space
+
+    This works by the encoder mapping images to a continuous latent representation, and, instead of
+    using this continuous representation directly, the model matches each latent vector to its closest
+    entry in the codebook (using nearest-neighbor lookup). This process quantizes the latent 
+    representation into discrete indices referring to entries in the codebook. This codebook 
+    is learned during training to optimize the recontruction quality. Finally. the decoder
+    reconstructs theimage from the selected codebook vectors instead of using continuous latent
+    values.
+
 
     Used to encode the input images to a lower-dimensional latent space and then decode them
     back to the original image space after performing diffusion.
@@ -52,69 +143,10 @@ class VQModel(nn.module):
         # GEt the moments of the quantized embedding space
         moments = self.quant_conv(z)
         
-        return
+        return NotImplementedError
 
     def forward(self, x):
-        pass
-
-
-class AutoencoderKL(nn.module):
-    """Latent diffusion autoencoder based on KL-divergence VAE; maps to continous latent space
-
-    Used to encode the input images to a lower-dimensional, continuous latent space and then 
-    decode them back to the original image space after performing diffusion.
-
-    KL-divergence VAE is a type of variational autoencoder that uses the KL-divergence
-    loss to minimize the distance between the latent distribution and the prior distribution.
-
-    """
-
-    def __init__(
-        self, *, embed_dim: int, n_embed: int, z_ch: int, double_z: bool = False
-    ):
-        """Initialize the KL VAE
-
-        Args:
-            embed_dim: TODO
-            n_embed: TODO
-            z_channels: number of channels in the latent/embedding space
-            double_z: whether to double the number of channels in the latent space
-        """
-        super().__init__()
-
-        assert double_z, "double_z should be True for the KL VAE"
-
-        self.embed_dim = embed_dim
-        self.n_embed = n_embed
-
-        self.encoder = Encoder()
-        self.decoder = Decoder()
-
-        # Conv to map from the emb space to the quantized emb space moments (mean & log variance);
-        # for a probability distribution, 1st moment = mean 2nd moment = variance;
-        # https://en.wikipedia.org/wiki/Moment_(mathematics);
-        # emb_space = continuous space, quantized_emb_space = discrete space
-        self.quant_conv = nn.Conv2d(2 * z_ch, 2 * embed_dim, kernel_size=1, stride=1)
-
-        # Conv to map from quantized space back to embedding space
-        self.post_quant_conv = nn.Conv2d(embed_dim, z_ch, kernel_size=1, stride=1)
-
-    def encode(self, img: torch.Tensor):
-        """Encode the image to a lower-dimensional latent space using the Encoder() module
-
-        Args:
-            img: the input image to encode to a latent space (b, c, h, w)
-        """
-        # Encode the image to a lower-dimensional latent space (b, c, h, w)
-        z = self.encoder(img)
-
-        # Get the moments of the quantized embedding space
-        moments = self.quant_conv(z)
-        
-        return
-
-    def forward(self, x):
-        pass
+        return NotImplementedError
 
 
 class Encoder(nn.Module):
