@@ -5,16 +5,11 @@
 """
 Transforms and data augmentation for both image + bbox.
 """
-import random
-import sys
-from typing import List, Optional, Tuple, Union
+from typing import List
 
 import numpy as np
-import PIL
 import torch
 import torchvision.transforms as T
-import torchvision.transforms.functional as F
-from PIL.Image import Image as PILImage
 
 
 class Unnormalize:
