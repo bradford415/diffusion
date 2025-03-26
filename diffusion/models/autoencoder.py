@@ -7,7 +7,7 @@ from diffusion.models.layers import AttnBlock, Downsample, ResBlock, Upsample
 class AutoencoderKL(nn.module):
     """Latent diffusion autoencoder based on KL-divergence VAE; maps to continous latent space
 
-    Used to encode the input images to a lower-dimensional, continuous latent space and then 
+    Used to encode the input images to a lower-dimensional, continuous latent space and then
     decode them back to the original image space after performing diffusion.
 
     NOTE: TODO write briefly that this module uses 'soft'quantization but is still using
@@ -61,9 +61,8 @@ class AutoencoderKL(nn.module):
         moments = self.quant_conv(z)
 
         posterior = DiagonalGaussianDistribution(moments)
-        
+
         return posterior
-    
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         """Decodes the latent vector back to the image space using the Decoder() module
@@ -79,7 +78,7 @@ class AutoencoderKL(nn.module):
 
         # Return to the image space
         img = self.decoder(z)
-        
+
         return img
 
     def forward(self, x):
@@ -92,8 +91,8 @@ class VQModel(nn.module):
 
     This works by the encoder mapping images to a continuous latent representation, and, instead of
     using this continuous representation directly, the model matches each latent vector to its closest
-    entry in the codebook (using nearest-neighbor lookup). This process quantizes the latent 
-    representation into discrete indices referring to entries in the codebook. This codebook 
+    entry in the codebook (using nearest-neighbor lookup). This process quantizes the latent
+    representation into discrete indices referring to entries in the codebook. This codebook
     is learned during training to optimize the recontruction quality. Finally. the decoder
     reconstructs theimage from the selected codebook vectors instead of using continuous latent
     values.
@@ -142,7 +141,7 @@ class VQModel(nn.module):
 
         # GEt the moments of the quantized embedding space
         moments = self.quant_conv(z)
-        
+
         return NotImplementedError
 
     def forward(self, x):
@@ -255,7 +254,6 @@ class Encoder(nn.Module):
 
         # Loop through down blocks at every resolution; each down block has res_blocks and a downsample
         for down in self.down:
-
             for res_block in down.block:
                 x = res_block(x)
 
@@ -324,7 +322,6 @@ class Decoder(nn.Module):
         self.up = nn.ModuleList()
 
         for res_i in reversed(range(num_resolutions)):
-
             res_blocks = nn.ModuleList()
             # Decoder has an additional ResBlock at each resolution
             for _ in range(num_res_blocks + 1):
@@ -401,7 +398,7 @@ class DiagonalGaussianDistribution(nn.Module):
                     half of the z_chs are the means and the second half are the log variances
         """
         super().__init__()
-        
+
         # Extract the means and log variances from the parameters; clip the log variances
         self.mean, log_variance = torch.chunk(parameters, 2, dim=1)
         self.log_variance = log_variance.clamp(-30.0, 20.0)
@@ -413,14 +410,14 @@ class DiagonalGaussianDistribution(nn.Module):
         """Sample from a gaussian distribution with the learned mean and std
 
         Creates a random tensor sampled from a standard normal distribution and scales it by the
-        learned std dev and adds the learned mean; because a standard normal distribution has 
+        learned std dev and adds the learned mean; because a standard normal distribution has
         std_dev=1 and mean=0, the multiplication scales the std_dev by 1 * self.std
         and addition adds the mean by 0 + self.mean
 
         This method implements the reparameterization trick used in VAEs and latent diffusion
         z=μ+σ⋅ϵ,ϵ~N(0,I) where I represents the identity matrix which indicates that the
         covariance structure is diagonal and independent.
-         
+
         retuns:
             shape: (b, z_channels, h, w)
         """
