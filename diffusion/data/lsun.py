@@ -16,6 +16,11 @@ class LSUNBase(Dataset):
         dataset_root: str,
         interpolation="bicubic",
     ):
+        """TODO
+        
+        Args:
+            TODO
+        """
         self.data_paths = split_txt_file
         self.data_root = dataset_root
 
@@ -86,11 +91,11 @@ class LSUNChurchesValidation(LSUNBase):
 
 
 class LSUNBedroomsTrain(LSUNBase):
-    def __init__(self, **kwargs):
+    def __init__(self, **base_kwargs):
         super().__init__(
             txt_file="data/lsun/bedrooms_train.txt",
             dataset_root="data/lsun/bedrooms",
-            **kwargs,
+            **base_kwargs,
         )
 
 
@@ -157,7 +162,11 @@ def build_lsun_transforms(
                 normalize,
             ]
         )
-    elif dataset_split == "test":
-        return normalize
+    elif dataset_split == "val":
+        return [
+                T.CenterCrop(size),
+                T.Resize(size),
+                normalize,
+            ]
     else:
         raise ValueError(f"unknown dataset split {dataset_split}")

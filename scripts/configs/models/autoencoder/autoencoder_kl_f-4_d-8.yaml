@@ -4,4 +4,14 @@
 #   - the downsample factor is determined by determined by 2^(len(ch_mults) - 1);
 #     this is the number of encoder levels
 ---
-### TODO start here and work on autoencoder config
+
+# TODO: Model configuration
+dataset:
+  name: LSUN
+  params:
+    ############### START HERE #################
+    root: /home/caleml/datasets/lsun
+    
+
+
+train:
