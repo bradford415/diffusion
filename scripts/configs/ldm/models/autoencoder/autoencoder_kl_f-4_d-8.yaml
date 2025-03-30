@@ -6,12 +6,3 @@
 ---
 
 # TODO: Model configuration
-dataset:
-  name: LSUN
-  params:
-    ############### START HERE #################
-    root: /home/caleml/datasets/lsun
-    
-
-
-train:

@@ -5,7 +5,6 @@ from typing import Tuple, Union
 
 import numpy as np
 from torchvision import transforms as T
-from torchvision.datasets import CIFAR10, CIFAR100
 
 from diffusion.data.transforms import Unnormalize
 
@@ -70,45 +69,3 @@ def make_cifar_transforms(
         return normalize
     else:
         raise ValueError(f"unknown dataset split {dataset_split}")
-
-
-def build_cifar(
-    dataset_name: str,
-    dataset_split: str,
-    root: str = "../",
-    orig_size=32,
-    resize_size=None,
-    debug_mode: bool = False,
-) -> Union[CIFAR10, CIFAR100]:
-    """Initialize the cifar 10 or 100 dataset
-
-    Args:
-        split: which dataset split to use; `train` or `val`
-        root: full path to the dataset root; for the cifar dataset this is the location the
-              dataset will be downloaded initially
-        debug_mode: Whether to build the dataset in debug mode; if true, this only uses a few samples
-                    to quickly run the code
-    """
-    dataset_root = Path(root)
-
-    # Create the data augmentation transforms
-    data_transforms = make_cifar_transforms(
-        dataset_split, orig_size=orig_size, resize_size=resize_size
-    )
-
-    dataset_args = {
-        "root": dataset_root,
-        "train": dataset_split == "train",
-        "download": True,
-        "transform": data_transforms,
-    }
-    if dataset_name == "cifar10":
-        dataset = CIFAR10(**dataset_args)
-    elif dataset_name == CIFAR100:
-        dataset = CIFAR100(**dataset_args)
-    else:
-        raise ValueError("Dataset not recognized, must be cifar10 or cifar100")
-
-    # TODO: manipulate dataset for debug mode
-
-    return dataset

@@ -53,9 +53,6 @@ def main(base_config_path: str, model_config_path: str = None):
     with open(model_config_path, "r") as f:
         model_config = yaml.safe_load(f)
 
-    
-    model_name = model_config["model_name"]
-
     dev_mode = base_config["dev_mode"]
 
     # Initialize paths
@@ -86,8 +83,8 @@ def main(base_config_path: str, model_config_path: str = None):
     # Apply reproducibility seeds
     reproduce.reproducibility(**base_config["reproducibility"])
 
-    # Extract solver config
-    solver_config = solver_configs[base_config["train"]["solver_config"]]()
+    # Extract solver config; TODO
+    #solver_config = solver_configs[base_config["train"]["solver_config"]]()
 
     # Set dataset parameters
     train_kwargs = {

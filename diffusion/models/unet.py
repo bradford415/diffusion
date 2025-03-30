@@ -1,17 +1,7 @@
-import copy
-import math
-from collections import namedtuple
-from functools import partial
-from multiprocessing import cpu_count
-from pathlib import Path
-from random import random
-
-import torch
 import torch.nn.functional as F
 from torch import nn
-from torchvision import transforms as T
 
-from diffusion.models.layers import (AttnBlock, Downsample,
+from diffusion.models.layers import (Downsample,
                                      MultiheadedAttentionFM, ResBlock,
                                      TimestepEmbedSequential, Upsample)
 from diffusion.models.positional import SinusoidalPosEmb

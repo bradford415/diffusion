@@ -4,7 +4,7 @@ import logging
 import random
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Union
 
 import numpy as np
 import torch
@@ -20,7 +20,7 @@ def model_info(model):
     log.info("Model params: %.2f M", (model_size / 1024 / 1024))
 
 
-def reproducibility(seed: int | None) -> None:
+def reproducibility(seed: Union[int, None]) -> None:
     """Set the seed for the sources of randomization. This allows for more reproducible results"""
 
     if seed is not None:
