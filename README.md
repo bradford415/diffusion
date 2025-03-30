@@ -5,10 +5,17 @@ Repository of diffusion models mostly for learning purposes.
 * [Training a Model](#training-a-model)
 * [Resources](#resources)
 
-## Training a Model
+## Latent Diffusion
+
+
+
+## DDPM
+
+### Training
 `python scripts/train.py scripts/configs/train-cifar10-pc.yaml scripts/configs/models/ddpm.yaml`
 
-# cifar-10 dataset
+__cifar-10 dataset__
+
 `python scripts/train.py scripts/configs/train-cifar10-pc.yaml scripts/configs/models/ddpm.yaml`
 
 ## DDPM results
