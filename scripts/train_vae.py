@@ -74,7 +74,6 @@ def main(base_config_path: str, model_config_path: str = None):
     if dev_mode:
         log.info("NOTE: executing in dev mode")
         base_config["train"]["batch_size"] = 2
-        base_config["validation"]["batch_size"] = 2
 
     log.info("Initializing...\n")
 

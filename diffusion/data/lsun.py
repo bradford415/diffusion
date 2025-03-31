@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms as T
 
 
-class LSUNBase(Dataset):
+class LSUNBase(Dataset):  
     def __init__(
         self,
         dataset_root: str,
