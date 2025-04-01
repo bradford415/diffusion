@@ -81,8 +81,6 @@ validation:
 
 # GPU parameters
 cuda:
-
-  # List of GPU devices to use
   gpus: [0]
 
 # Reproducibility information

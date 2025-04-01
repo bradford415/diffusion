@@ -9,10 +9,10 @@ from fire import Fire
 from torch import nn
 from torch.utils.data import DataLoader
 
-from diffusion.solvers import solver_configs
 from diffusion.data import create_dataset
 from diffusion.models import DDPM, Unet
 from diffusion.models.layers import init_weights
+from diffusion.solvers import solver_configs
 from diffusion.trainer import Trainer
 from diffusion.utils import reproduce
 
@@ -83,7 +83,7 @@ def main(base_config_path: str, model_config_path: str = None):
     reproduce.reproducibility(**base_config["reproducibility"])
 
     # Extract solver config; TODO
-    #solver_config = solver_configs[base_config["train"]["solver_config"]]()
+    # solver_config = solver_configs[base_config["train"]["solver_config"]]()
 
     # Set dataset parameters
     train_kwargs = {
@@ -122,17 +122,15 @@ def main(base_config_path: str, model_config_path: str = None):
         train_kwargs.update(gpu_kwargs)
         val_kwargs.update(gpu_kwargs)
 
-    # Create train and val dataset; cifar does not have a val set so we can use test for this
-    dataset_name = base_config["dataset"].get("name")
-    dataset_kwargs = base_config["dataset"]["params"]
+    # Create train and val dataset
+    dataset_params = base_config["dataset"]
+    dataset_name = dataset_params.get("name")
+    dataset_kwargs = dataset_params["params"]
+
     if dataset_name is not None:
         # TODO: refactor to work with cifar
-        dataset_train = create_dataset(
-            dataset_name, split="train", **dataset_kwargs
-        )
-        dataset_val = create_dataset(
-            dataset_name, split="val", **dataset_kwargs
-        )
+        dataset_train = create_dataset(dataset_name, split="train", root=dataset_params["root"], **dataset_kwargs)
+        dataset_val = create_dataset(dataset_name, split="val", root=dataset_params["root"], **dataset_kwargs)
 
     dataloader_train = DataLoader(
         dataset_train,

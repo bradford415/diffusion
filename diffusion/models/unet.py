@@ -1,9 +1,9 @@
 import torch.nn.functional as F
 from torch import nn
 
-from diffusion.models.layers import (Downsample,
-                                     MultiheadedAttentionFM, ResBlock,
-                                     TimestepEmbedSequential, Upsample)
+from diffusion.models.layers import (Downsample, MultiheadedAttentionFM,
+                                     ResBlock, TimestepEmbedSequential,
+                                     Upsample)
 from diffusion.models.positional import SinusoidalPosEmb
 
 

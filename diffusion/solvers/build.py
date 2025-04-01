@@ -2,6 +2,7 @@ from collections.abc import Iterable
 
 from diffusion.solvers import optimizer_map, scheduler_map
 
+
 def build_solvers(
     model_params: Iterable,
     optimizer_params: dict[str, any],

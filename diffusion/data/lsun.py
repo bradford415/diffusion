@@ -8,11 +8,10 @@ from torch.utils.data import Dataset
 from torchvision import transforms as T
 
 
-class LSUNBase(Dataset):  
+class LSUNBase(Dataset):
     def __init__(
         self,
-        dataset_root: str,
-        split: str,
+        root: str,
         split_txt_file: str = "",
         transforms: T = None,
     ):
@@ -23,7 +22,7 @@ class LSUNBase(Dataset):
         """
         # TODO: build self.data_paths with data_root
         self.data_paths = split_txt_file
-        self.data_root = dataset_root
+        self.data_root = root
 
         with open(self.data_paths, "r") as f:
             self.image_paths = f.read().splitlines()
@@ -35,6 +34,8 @@ class LSUNBase(Dataset):
         }
 
         self.transforms = transforms
+
+        # TODO: implement dev mode
 
     def __len__(self):
         return len(self.image_paths)
@@ -67,7 +68,7 @@ class LSUNChurchesValidation(LSUNBase):
     def __init__(self, flip_p=0.0, **kwargs):
         super().__init__(
             txt_file="data/lsun/church_outdoor_val.txt",
-            data_root="data/lsun/churches",
+            root="data/lsun/churches",
             flip_p=flip_p,
             **kwargs,
         )
@@ -78,7 +79,7 @@ class LSUNBedrooms(LSUNBase):
 
     def __init__(self, **base_kwargs):
         super().__init__(
-            dataset_root="data/lsun/bedrooms",
+            root="data/lsun/bedrooms",
             txt_file="data/lsun/bedrooms_train.txt",
             **base_kwargs,
         )
@@ -104,8 +105,8 @@ class LSUNCatsValidation(LSUNBase):
 def build_lsun_transforms(
     dataset_split,
     size: Union[int, tuple] = 256,
-    horizontal_flip = 0.5,
-    interpolation = "bicubic",
+    horizontal_flip=0.5,
+    interpolation="bicubic",
 ):
     """Initialize transforms for the lsun dataset
 
@@ -121,7 +122,6 @@ def build_lsun_transforms(
 
     """
     _interpolation = {
-        "linear": PIL.Image.LINEAR,
         "bilinear": PIL.Image.BILINEAR,
         "bicubic": PIL.Image.BICUBIC,
         "lanczos": PIL.Image.LANCZOS,

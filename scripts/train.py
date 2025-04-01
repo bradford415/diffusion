@@ -9,10 +9,10 @@ from fire import Fire
 from torch import nn
 from torch.utils.data import DataLoader
 
-from diffusion.solvers import solver_configs
 from diffusion.data import create_dataset
 from diffusion.models import DDPM, Unet
 from diffusion.models.layers import init_weights
+from diffusion.solvers import solver_configs
 from diffusion.trainer import Trainer
 from diffusion.utils import reproduce
 
@@ -53,7 +53,6 @@ def main(base_config_path: str, model_config_path: str = None):
     with open(model_config_path, "r") as f:
         model_config = yaml.safe_load(f)
 
-    
     model_name = model_config["model_name"]
 
     dev_mode = base_config["dev_mode"]
@@ -131,12 +130,8 @@ def main(base_config_path: str, model_config_path: str = None):
     dataset_kwargs = base_config["dataset"]["params"]
     if dataset_name is not None:
         # TODO: refactor to work with cifar
-        dataset_train = create_dataset(
-            dataset_name, split="train", **dataset_kwargs
-        )
-        dataset_val = create_dataset(
-            dataset_name, split="val", **dataset_kwargs
-        )
+        dataset_train = create_dataset(dataset_name, split="train", **dataset_kwargs)
+        dataset_val = create_dataset(dataset_name, split="val", **dataset_kwargs)
 
     dataloader_train = DataLoader(
         dataset_train,

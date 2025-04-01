@@ -3,12 +3,16 @@ from typing import Union
 
 from torchvision.datasets import CIFAR10, CIFAR100
 
-from diffusion.data import dataset_map
 from diffusion.data.cifar import make_cifar_transforms
-from diffusion.data.lsun import build_lsun_transforms
+from diffusion.data.lsun import LSUNBedrooms, build_lsun_transforms
 
+dataset_map = {
+    "cifar10": CIFAR10,
+    "cifar100": CIFAR100,
+    "lsun_bedroom": LSUNBedrooms,
+}
 
-def create_dataset(dataset_name: str, split: str, dataset_params: dict):
+def create_dataset(dataset_name: str, split: str, **dataset_params: dict):
     """Builds the desired dataset by handling the dataset specific parameters
 
     Args:
@@ -18,15 +22,17 @@ def create_dataset(dataset_name: str, split: str, dataset_params: dict):
     """
     if dataset_name == "cifar10":
         dataset = _build_cifar(dataset_name, split, **dataset_params)
-    if dataset_name == "lsun_bedrooms":
+    if dataset_name == "lsun_bedroom":
         dataset = _build_lsun(dataset_name, split, **dataset_params)
     elif dataset_name not in dataset_map:
-        return ValueError("Dataset not recognized.")
+        raise ValueError(f"dataset {dataset_name} not recognized.")
 
     return dataset
 
 
-def _build_lsun(dataset_name: str, dataset_root: str, dataset_split: str, size: int = 256):
+def _build_lsun(
+    dataset_name: str, dataset_split: str, root: str, size: int = 256
+):
     """Initialize the lsun dataset
 
     Args:
@@ -36,7 +42,7 @@ def _build_lsun(dataset_name: str, dataset_root: str, dataset_split: str, size: 
     """
     transforms = build_lsun_transforms(dataset_split=dataset_split, size=size)
 
-    dataset = dataset_map[dataset_name](transforms=transforms)
+    dataset = dataset_map[dataset_name](root, transforms=transforms)
 
     return dataset
 
@@ -71,7 +77,7 @@ def _build_cifar(
         "download": True,
         "transform": data_transforms,
     }
-    
+
     dataset_map[dataset_name]
 
     # TODO: manipulate dataset for debug mode

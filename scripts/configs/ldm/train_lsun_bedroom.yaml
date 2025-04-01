@@ -11,14 +11,18 @@ output_dir: "output/train-vae"
 # Experiment name; this will be used for the output directory; use "development" when developing
 exp_name: "development"
 
+# GPU parameters
+cuda:
+  # List of GPU devices to use
+  gpus: [0]
+
 dataset:
-  name: LSUN
+  name: lsun_bedroom
+  root: /d/TODO
+  root_mac: /Users/bsele/datasets/lsun-bedroom-20-percent
   num_workers: 4
 
   params:
-    root: /d/TODO
-    root_mac: /Users/bsele/datasets/lsun-bedroom-20-percent
-
     # transforms; see diffusion.datasets.lsun.build_lsun_transforms for more information
     size: 256
 
@@ -27,7 +31,7 @@ train:
 
   batch_size: 32
 
-  # The step to start on; ddpm doesn't seem to use epochs and uses steps instead;
+  # The step to start on
   start_step: 1
   steps: 700000
 
@@ -46,29 +50,10 @@ train:
   # Path of weights file (.pt) to resume training; use `null` to train a new model from scratch 
   checkpoint_path: #/home/bselee/programming/diffusion/output/train/development/2024_11_11-09_40_21_PM/checkpoints/checkpoint0015000.pt
 
-train:
+validation:
   learning_config: "learning_config_1"
 
   batch_size: 32
-
-  # The step to start on; ddpm doesn't seem to use epochs and uses steps instead;
-  start_step: 1
-  steps: 700000
-
-  # Number of steps to checkpoint after; use 'null' to turn off checkpointing
-  ckpt_steps: 10000
-
-  # Number of steps to sample images after
-  eval_intervals: 4000
-
-  # Number of samples to generate during evaluation
-  num_samples: 16
-
-  # Number of samples to pass through the model during sampling
-  sampling_batch_size: 4
-
-  # Path of weights file (.pt) to resume training; use `null` to train a new model from scratch 
-  checkpoint_path: #/home/bselee/programming/diffusion/output/train/development/2024_11_11-09_40_21_PM/checkpoints/checkpoint0015000.pt
 
 # Reproducibility information
 reproducibility:
