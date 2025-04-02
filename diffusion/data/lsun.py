@@ -51,7 +51,7 @@ class LSUNBase(Dataset):
 
     def __getitem__(self, i):
         """Retrieve and preprocess an image from the dataset"""
-        # TODO Comment
+        # TODO Comment and make this more readable
         example = dict((k, self.labels[k][i]) for k in self.labels)
         _image = Image.open(example["file_path_"]).convert("RGB")
 

@@ -18,7 +18,8 @@ cuda:
 
 dataset:
   name: lsun_bedroom
-  root: /mnt/d/datasets/lsun
+  #root: /mnt/d/datasets/lsun
+  root: ~/test-volume/lsun
   root_mac: /Users/bsele/datasets/lsun-bedroom-20-percent
   num_workers: 4
 
