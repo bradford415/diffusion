@@ -129,8 +129,10 @@ def main(base_config_path: str, model_config_path: str = None):
 
     if dataset_name is not None:
         # TODO: refactor to work with cifar
-        dataset_train = create_dataset(dataset_name, split="train", root=dataset_params["root"], **dataset_kwargs)
-        dataset_val = create_dataset(dataset_name, split="val", root=dataset_params["root"], **dataset_kwargs)
+        dataset_train = create_dataset(dataset_name, split="train", root=dataset_params["root"], dev_mode=dev_mode, **dataset_kwargs)
+        dataset_val = create_dataset(dataset_name, split="val", root=dataset_params["root"], dev_mode=dev_mode, **dataset_kwargs)
+    else:
+        raise ValueError("dataset name not specified in the config file")
 
     dataloader_train = DataLoader(
         dataset_train,
@@ -145,6 +147,7 @@ def main(base_config_path: str, model_config_path: str = None):
     )
 
     exit()
+    
 
     # Extract the train arguments from base config
     train_args = base_config["train"]
@@ -154,12 +157,6 @@ def main(base_config_path: str, model_config_path: str = None):
     learning_params = base_config[learning_config]
 
     # Initalize models
-    ## TODO: Apply weights initialization in constructor maybe
-    denoise_model = Unet(**model_config["model_params"][model_name]).to(device)
-    denoise_model.apply(init_weights)
-    # denoise_model = UNet_gh(
-    #     T=1000, ch=128, ch_mult=[1, 2, 2, 2], attn=[1], num_res_blocks=2, dropout=0.1
-    # ).to(device)
     diffusion_model = DDPM(
         denoise_model, device=device, **model_config["model_params"]["ddpm"]
     ).to(device)
@@ -167,12 +164,8 @@ def main(base_config_path: str, model_config_path: str = None):
     # Compute and log the number of params in the model
     reproduce.model_info(diffusion_model)
 
-    # Initialize training objects
-    optimizer = _init_training_objects(
-        model_params=diffusion_model.parameters(),
-        optimizer=learning_params["optimizer"],
-        learning_rate=learning_params["learning_rate"],
-        weight_decay=learning_params["weight_decay"],
+    optimizer, lr_scheduler = build_solvers(
+        model.parameters(), solver_config.optimizer, solver_config.lr_scheduler
     )
 
     trainer = Trainer(
@@ -206,19 +199,6 @@ def main(base_config_path: str, model_config_path: str = None):
 
     # Train the ddpm model
     trainer.train(**trainer_args)
-
-
-def _init_training_objects(
-    model_params: Iterable,
-    optimizer: str = "sgd",
-    learning_rate: float = 1e-4,
-    weight_decay: float = 1e-4,
-):
-    optimizer = optimizer_map[optimizer](
-        model_params, lr=learning_rate, weight_decay=weight_decay
-    )
-
-    return optimizer
 
 
 if __name__ == "__main__":

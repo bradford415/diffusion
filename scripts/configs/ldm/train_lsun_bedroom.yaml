@@ -3,7 +3,7 @@
 
 # Whether to run in development/debugging mode; this only uses a few samples in in the train/val dataset
 # to quickly run the code as well as sets num_workers=0
-dev_mode: False
+dev_mode: True
 
 # Base directory for output files; do not change this
 output_dir: "output/train-vae"
@@ -18,7 +18,7 @@ cuda:
 
 dataset:
   name: lsun_bedroom
-  root: /d/TODO
+  root: /mnt/d/datasets/lsun
   root_mac: /Users/bsele/datasets/lsun-bedroom-20-percent
   num_workers: 4
 

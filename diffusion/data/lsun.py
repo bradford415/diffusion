@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Union
 
 import numpy as np
@@ -9,20 +10,27 @@ from torchvision import transforms as T
 
 
 class LSUNBase(Dataset):
+    """Parent class for the LSUN datasets"""
     def __init__(
         self,
         root: str,
         split_txt_file: str = "",
         transforms: T = None,
+        dev_mode: bool = False,
     ):
-        """TODO
+        """Initialize the base class for the LSUN datasets
+        Args:
+            root: the root directory of the dataset
+            split_txt_file: relative path, from the data root, to the split text file from the latent diffusion repo found here:
+                            https://github.com/CompVis/latent-diffusion/tree/main?tab=readme-ov-file#lsun
+            transforms: transformations to apply to the images
 
         Args:
             TODO
         """
-        # TODO: build self.data_paths with data_root
-        self.data_paths = split_txt_file
+
         self.data_root = root
+        self.data_paths = Path(root) / split_txt_file
 
         with open(self.data_paths, "r") as f:
             self.image_paths = f.read().splitlines()
@@ -35,7 +43,8 @@ class LSUNBase(Dataset):
 
         self.transforms = transforms
 
-        # TODO: implement dev mode
+        if dev_mode:
+            self.image_paths = self.image_paths[:16]
 
     def __len__(self):
         return len(self.image_paths)
@@ -55,6 +64,24 @@ class LSUNBase(Dataset):
         return example
 
 
+class LSUNBedrooms(LSUNBase):
+    """LSUN bedrooms dataset class"""
+
+    def __init__(self, split: str, **base_kwargs):
+        """Initialize the LSUN bedrooms dataset"""
+        if split == "train":
+            split_txt_file = "lsun/bedrooms_train.txt"
+        elif split == "val":
+            split_txt_file = "lsun/bedrooms_val.txt"
+        else:
+            raise ValueError(f"unknown dataset split {split}")
+        
+        super().__init__(
+            split_txt_file=split_txt_file,
+            **base_kwargs,
+        )
+
+
 class LSUNChurchesTrain(LSUNBase):
     def __init__(self, **kwargs):
         super().__init__(
@@ -71,17 +98,6 @@ class LSUNChurchesValidation(LSUNBase):
             root="data/lsun/churches",
             flip_p=flip_p,
             **kwargs,
-        )
-
-
-class LSUNBedrooms(LSUNBase):
-    """LSUN bedrooms dataset class"""
-
-    def __init__(self, **base_kwargs):
-        super().__init__(
-            root="data/lsun/bedrooms",
-            txt_file="data/lsun/bedrooms_train.txt",
-            **base_kwargs,
         )
 
 
