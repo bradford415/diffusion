@@ -19,14 +19,13 @@ class AutoencoderKL(nn.module):
     """
 
     def __init__(
-        self, *, embed_dim: int, n_embed: int, z_ch: int, double_z: bool = False
+        self, *, embed_dim: int, z_ch: int, double_z: bool = False
     ):
         """Initialize the KL VAE
 
         Args:
             embed_dim: TODO
-            n_embed: TODO
-            z_channels: number of channels in the latent/embedding space
+            z_ch: number of channels in the latent/embedding space
             double_z: whether to double the number of channels in the latent space
         """
         super().__init__()
@@ -34,7 +33,6 @@ class AutoencoderKL(nn.module):
         assert double_z, "double_z should be True for the KL VAE"
 
         self.embed_dim = embed_dim
-        self.n_embed = n_embed
 
         self.encoder = Encoder()
         self.decoder = Decoder()
@@ -116,7 +114,6 @@ class VQModel(nn.module):
         super().__init__()
 
         self.embed_dim = embed_dim
-        self.n_embed = n_embed
 
         self.encoder = Encoder()
         self.decoder = Decoder()
@@ -142,10 +139,10 @@ class VQModel(nn.module):
         # GEt the moments of the quantized embedding space
         moments = self.quant_conv(z)
 
-        return NotImplementedError
+        raise NotImplementedError
 
     def forward(self, x):
-        return NotImplementedError
+        raise NotImplementedError
 
 
 class Encoder(nn.Module):

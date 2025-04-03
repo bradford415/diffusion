@@ -28,14 +28,14 @@ class LSUNBase(Dataset):
         Args:
             TODO
         """
-
         self.data_root = root
         self.data_paths = Path(root) / split_txt_file
 
         with open(self.data_paths, "r") as f:
             self.image_paths = f.read().splitlines()
 
-        # TODO: comment
+        # Crate a dictionary with keys: rel file_path and abs file_path
+        # and values: a list of the corresponding file paths
         self.labels = {
             "relative_file_path_": [l for l in self.image_paths],
             "file_path_": [os.path.join(self.data_root, l) for l in self.image_paths],

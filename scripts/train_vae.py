@@ -10,7 +10,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from diffusion.data import create_dataset
-from diffusion.models import DDPM, Unet
+from diffusion.models import DDPM, Unet, vae_map
 from diffusion.models.layers import init_weights
 from diffusion.solvers import solver_configs
 from diffusion.trainer import Trainer
