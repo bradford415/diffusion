@@ -12,13 +12,16 @@ dataset_map = {
     "lsun_bedroom": LSUNBedrooms,
 }
 
-def create_dataset(dataset_name: str, split: str, dev_mode: bool = False, **dataset_params: dict):
+
+def create_dataset(
+    dataset_name: str, split: str, dev_mode: bool = False, **dataset_params: dict
+):
     """Builds the desired dataset by handling the dataset specific parameters
 
     Args:
         dataset_name: the name of the dataset to create
         split: the dataset split to use; `train` or `val`
-        dev_mode: 
+        dev_mode:
         dataset_params: the parameters specific to the dataset
     """
     if dataset_name == "cifar10":
@@ -32,7 +35,11 @@ def create_dataset(dataset_name: str, split: str, dev_mode: bool = False, **data
 
 
 def _build_lsun(
-    dataset_name: str, dataset_split: str, root: str, size: int = 256, dev_mode: bool = False
+    dataset_name: str,
+    dataset_split: str,
+    root: str,
+    size: int = 256,
+    dev_mode: bool = False,
 ):
     """Initialize the lsun dataset
 
@@ -43,7 +50,9 @@ def _build_lsun(
     """
     transforms = build_lsun_transforms(dataset_split=dataset_split, size=size)
 
-    dataset = dataset_map[dataset_name](dataset_split, root=root, transforms=transforms, dev_mode=dev_mode)
+    dataset = dataset_map[dataset_name](
+        dataset_split, root=root, transforms=transforms, dev_mode=dev_mode
+    )
 
     return dataset
 

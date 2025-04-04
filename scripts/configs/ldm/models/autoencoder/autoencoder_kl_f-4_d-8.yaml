@@ -1,14 +1,23 @@
 # Configuration file for the KL Autoencoder
 # Filename convention: 
-#   - autoencoder_{vae_type}_f-{downsample_factor}_d-{emb_dim}.yaml
+#   - autoencoder_{vae_type}_f-{downsample_factor}_d-{latent_ch}.yaml
 #   - the downsample factor is determined by  2^(len(ch_mults) - 1);
 #     this is the number of encoder levels
+#   - latent_ch=z_ch
+
+# Example: 256x256 input image downsamples by f=4 so 256 / 4 = 64x64
+# Config based on: https://github.com/CompVis/latent-diffusion/blob/main/configs/autoencoder/autoencoder_kl_64x64x3.yaml
 ---
 model_name: "autoencoder_kl"
-params:
-  embed_dim:
-  z_ch:
-  double_z: True
 
-  
+embed_dim: 3
+
+# Encoder & decoder params; see diffusion.models.autoencoder_kl for descriptions
+params:
+  ch: 128
+  ch_mults: [1, 2, 4]
+  num_res_blocks: 2
+  z_ch: 3
+  double_z: True
+  dropout: 0.0
 

@@ -19,23 +19,51 @@ class AutoencoderKL(nn.module):
     """
 
     def __init__(
-        self, *, embed_dim: int, z_ch: int, double_z: bool = False
+        self,
+        *,
+        embed_dim: int,
+        in_ch: int,
+        ch: int,
+        ch_mults: list[int],
+        num_res_blocks: int,
+        z_ch: int,
+        double_z: bool = True,
+        dropout=0.0
     ):
-        """Initialize the KL VAE
+        """Initialize the KL VAE; default parameters are for the f=8, d=3 config
+        NOTE: d is the # of chs in the latent vector while z refers to the latent vector itself
 
         Args:
+            TODO
             embed_dim: TODO
             z_ch: number of channels in the latent/embedding space
             double_z: whether to double the number of channels in the latent space
         """
         super().__init__()
 
-        assert double_z, "double_z should be True for the KL VAE"
+        assert double_z, "double_z should most likely be True for the KL VAE"
 
-        self.embed_dim = embed_dim
+        if embed_dim != z_ch:
+            # From the config files, it seems the embed_dim=z_ch but they're used as different parameters
+            raise ValueError("embed_dim should be equal to z_ch for the KL VAE")
 
-        self.encoder = Encoder()
-        self.decoder = Decoder()
+        self.encoder = Encoder(
+            in_channels=in_ch,
+            ch=ch,
+            ch_mult=ch_mults,
+            num_res_blocks=num_res_blocks,
+            z_channels=z_ch,
+            double_z=double_z,
+            dropout=dropout,
+        )
+        self.decoder = Decoder(
+            ch=ch,
+            ch_mult=ch_mults,
+            num_res_blocks=num_res_blocks,
+            out_ch=in_ch,
+            z_channels=z_ch,
+            dropout=dropout,
+        )
 
         # Conv to map from the emb space to the quantized emb space moments (mean & log variance);
         # for a probability distribution, 1st moment = mean 2nd moment = variance;
@@ -156,29 +184,24 @@ class Encoder(nn.Module):
         self,
         *,
         in_channels: int,
-        resolution,
         ch: int,
-        out_ch: int,
         ch_mult: list[int] = [1, 2, 4, 8],
-        num_res_blocks,
+        num_res_blocks: int,
         z_channels: int,
         double_z: bool,
-        attn_resoluion,
-        dropout=0.0,
+        dropout: float = 0.0,
         resample_with_conv=True
     ):
         """TODO
 
         Args:
             in_channels: number of channels in the input image (e.g., 3 for RGB)
-            resolution: TODO
             ch: base channels to be multiplied by ch_mult
             ch_mult: multiplier for ch to determine the number of channels in subsequent layers
             num_res_blocks: number of residual blocks in each resolution
             z_channels: number of channels in the latent/embedding space;
             double_z: whether to double the number of channels in the latent space; this is typically True for
                       the KL autoencoder but False for the VQ autoencoder
-            attn_resolution: TODO
             dropout: the dropout probability for each ResBlock; this is typically 0.0 for the encoder
 
         """
@@ -186,7 +209,6 @@ class Encoder(nn.Module):
         self.ch = ch
         num_resolutions = len(ch_mult)
         self.num_res_blocks = num_res_blocks
-        self.resolution = resolution
         self.in_channels = in_channels
 
         # Double the latent chs if double_z is True
@@ -272,7 +294,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     """Decoder module for the VQ-VAE model
 
-    Used to upsample the embedding
+    Used to upsample the latent vector back to the image space
     """
 
     def __init__(

@@ -128,9 +128,20 @@ def main(base_config_path: str, model_config_path: str = None):
     dataset_kwargs = dataset_params["params"]
 
     if dataset_name is not None:
-        # TODO: refactor to work with cifar
-        dataset_train = create_dataset(dataset_name, split="train", root=dataset_params["root"], dev_mode=dev_mode, **dataset_kwargs)
-        dataset_val = create_dataset(dataset_name, split="val", root=dataset_params["root"], dev_mode=dev_mode, **dataset_kwargs)
+        dataset_train = create_dataset(
+            dataset_name,
+            split="train",
+            root=dataset_params["root"],
+            dev_mode=dev_mode,
+            **dataset_kwargs,
+        )
+        dataset_val = create_dataset(
+            dataset_name,
+            split="val",
+            root=dataset_params["root"],
+            dev_mode=dev_mode,
+            **dataset_kwargs,
+        )
     else:
         raise ValueError("dataset name not specified in the config file")
 
@@ -147,7 +158,6 @@ def main(base_config_path: str, model_config_path: str = None):
     )
 
     exit()
-    
 
     # Extract the train arguments from base config
     train_args = base_config["train"]
@@ -155,6 +165,8 @@ def main(base_config_path: str, model_config_path: str = None):
     # Extract the learning parameters such as lr, optimizer params and lr scheduler
     learning_config = train_args["learning_config"]
     learning_params = base_config[learning_config]
+
+    ############## START HERE build vae ############
 
     # Initalize models
     diffusion_model = DDPM(

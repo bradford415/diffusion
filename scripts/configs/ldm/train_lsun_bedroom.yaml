@@ -23,6 +23,9 @@ dataset:
   root_mac: /Users/bsele/datasets/lsun-bedroom-20-percent
   num_workers: 4
 
+  # Number of chs in the input input; 3 for RGB images; might be better to hardcode this in the dataset class
+  in_channels: 3
+
   params:
     # transforms; see diffusion.datasets.lsun.build_lsun_transforms for more information
     size: 256

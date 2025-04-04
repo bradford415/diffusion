@@ -11,6 +11,7 @@ from torchvision import transforms as T
 
 class LSUNBase(Dataset):
     """Parent class for the LSUN datasets"""
+
     def __init__(
         self,
         root: str,
@@ -75,7 +76,7 @@ class LSUNBedrooms(LSUNBase):
             split_txt_file = "lsun/bedrooms_val.txt"
         else:
             raise ValueError(f"unknown dataset split {split}")
-        
+
         super().__init__(
             split_txt_file=split_txt_file,
             **base_kwargs,
