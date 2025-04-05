@@ -4,7 +4,7 @@ from torch import nn
 from diffusion.models.layers import AttnBlock, Downsample, ResBlock, Upsample
 
 
-class AutoencoderKL(nn.module):
+class AutoencoderKL(nn.Module):
     """Latent diffusion autoencoder based on KL-divergence VAE; maps to continous latent space
 
     Used to encode the input images to a lower-dimensional, continuous latent space and then
@@ -111,7 +111,7 @@ class AutoencoderKL(nn.module):
         pass
 
 
-class VQModel(nn.module):
+class VQModel(nn.Module):
     """Latent diffusion autoencoder based on VQ-VAE (Vector Quantized Variational Autoencoder);
     maps to a discrete latent space
 
@@ -354,7 +354,7 @@ class Decoder(nn.Module):
 
             # Upsample at the end of each resolution except the last
             if res_i != 0:
-                up.upsample = Upsample(scale_factor=2, mode="nearest")
+                up.upsample = Upsample(ch, scale_factor=2, mode="nearest")
             else:
                 up.upsample = nn.Identity()
 

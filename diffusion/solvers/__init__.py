@@ -9,4 +9,9 @@ optimizer_map = {
     "sgd": torch.optim.SGD,
 }
 
-solver_configs = {"": kl_vae_f_4_d_8_lsun_bedroom}
+scheduler_map = {
+    "step_lr": torch.optim.lr_scheduler.StepLR,
+    "lambda_lr": torch.optim.lr_scheduler.LambdaLR,
+}
+
+solver_configs = {"resnet50_imagenet": kl_vae_f_4_d_8_lsun_bedroom}

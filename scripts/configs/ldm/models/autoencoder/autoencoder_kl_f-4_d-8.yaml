@@ -14,6 +14,7 @@ embed_dim: 3
 
 # Encoder & decoder params; see diffusion.models.autoencoder_kl for descriptions
 params:
+  in_ch: 3
   ch: 128
   ch_mults: [1, 2, 4]
   num_res_blocks: 2

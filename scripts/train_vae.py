@@ -13,6 +13,7 @@ from diffusion.data import create_dataset
 from diffusion.models import DDPM, Unet, vae_map
 from diffusion.models.layers import init_weights
 from diffusion.solvers import solver_configs
+from diffusion.solvers.build import build_solvers
 from diffusion.trainer import Trainer
 from diffusion.utils import reproduce
 
@@ -53,6 +54,9 @@ def main(base_config_path: str, model_config_path: str = None):
     with open(model_config_path, "r") as f:
         model_config = yaml.safe_load(f)
 
+    # Apply reproducibility seeds
+    reproduce.reproducibility(**base_config["reproducibility"])
+
     dev_mode = base_config["dev_mode"]
 
     # Initialize paths
@@ -79,9 +83,6 @@ def main(base_config_path: str, model_config_path: str = None):
 
     log.info("writing outputs to %s", str(output_path))
 
-    # Apply reproducibility seeds
-    reproduce.reproducibility(**base_config["reproducibility"])
-
     # Extract solver config; TODO
     # solver_config = solver_configs[base_config["train"]["solver_config"]]()
 
@@ -106,7 +107,7 @@ def main(base_config_path: str, model_config_path: str = None):
             log.info("    -%s", torch.cuda.get_device_name(gpu))
     elif torch.mps.is_available():
         base_config["dataset"]["root"] = base_config["dataset"]["root_mac"]
-        del base_config_path["dataset"]["root_mac"]
+        del base_config["dataset"]["root_mac"]
         device = torch.device("mps")
         log.info("Using: %s", device)
     else:
@@ -127,57 +128,53 @@ def main(base_config_path: str, model_config_path: str = None):
     dataset_name = dataset_params.get("name")
     dataset_kwargs = dataset_params["params"]
 
-    if dataset_name is not None:
-        dataset_train = create_dataset(
-            dataset_name,
-            split="train",
-            root=dataset_params["root"],
-            dev_mode=dev_mode,
-            **dataset_kwargs,
-        )
-        dataset_val = create_dataset(
-            dataset_name,
-            split="val",
-            root=dataset_params["root"],
-            dev_mode=dev_mode,
-            **dataset_kwargs,
-        )
-    else:
-        raise ValueError("dataset name not specified in the config file")
+    # if dataset_name is not None:
+    #     dataset_train = create_dataset(
+    #         dataset_name,
+    #         split="train",
+    #         root=dataset_params["root"],
+    #         dev_mode=dev_mode,
+    #         **dataset_kwargs,
+    #     )
+    #     dataset_val = create_dataset(
+    #         dataset_name,
+    #         split="val",
+    #         root=dataset_params["root"],
+    #         dev_mode=dev_mode,
+    #         **dataset_kwargs,
+    #     )
+    # else:
+    #     raise ValueError("dataset name not specified in the config file")
 
-    dataloader_train = DataLoader(
-        dataset_train,
-        drop_last=True,
-        **train_kwargs,
-    )
+    # dataloader_train = DataLoader(
+    #     dataset_train,
+    #     drop_last=True,
+    #     **train_kwargs,
+    # )
 
-    dataloader_val = DataLoader(
-        dataset_val,
-        drop_last=True,
-        **val_kwargs,
-    )
-
-    exit()
+    # dataloader_val = DataLoader(
+    #     dataset_val,
+    #     drop_last=True,
+    #     **val_kwargs,
+    # )
 
     # Extract the train arguments from base config
     train_args = base_config["train"]
 
-    # Extract the learning parameters such as lr, optimizer params and lr scheduler
-    learning_config = train_args["learning_config"]
-    learning_params = base_config[learning_config]
-
-    ############## START HERE build vae ############
-
-    # Initalize models
-    diffusion_model = DDPM(
-        denoise_model, device=device, **model_config["model_params"]["ddpm"]
+    # Initalize the autoencoder model
+    vae_model = vae_map[model_config["model_name"]](
+        embed_dim=model_config["embed_dim"], **model_config["params"]
     ).to(device)
 
     # Compute and log the number of params in the model
-    reproduce.model_info(diffusion_model)
+    reproduce.model_info(vae_model)
 
+    ############# START HERE - BUILD CORRECT SOLVER PARAMS ####################
+
+    # Extract solver configs and build solvers
+    solver_config = solver_configs[base_config["train"]["solver_config"]]()
     optimizer, lr_scheduler = build_solvers(
-        model.parameters(), solver_config.optimizer, solver_config.lr_scheduler
+        vae_model.parameters(), solver_config.optimizer, solver_config.lr_scheduler
     )
 
     trainer = Trainer(

@@ -31,7 +31,9 @@ dataset:
     size: 256
 
 train:
-  learning_config: "learning_config_1"
+  # Configurations for training objects such as the optmizier and lr scheduler
+  # TODO: replace with vae solver params
+  solver_config: "resnet50_imagenet"
 
   batch_size: 32
 
@@ -55,7 +57,6 @@ train:
   checkpoint_path: #/home/bselee/programming/diffusion/output/train/development/2024_11_11-09_40_21_PM/checkpoints/checkpoint0015000.pt
 
 validation:
-  learning_config: "learning_config_1"
 
   batch_size: 32
 

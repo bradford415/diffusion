@@ -363,15 +363,23 @@ class Downsample(nn.Module):
 class Upsample(nn.Module):
     """Upsample feature maps; this is used at the last layer of each unet decoder level"""
 
-    def __init__(self, ch: torch.Tensor):
-        """Initialize upsample module"""
+    def __init__(self, ch: torch.Tensor, scale_factor: int = 2, mode:str = "nearest"):
+        """Initialize upsample module
+        
+        Args:
+            ch: the number of input channels for Conv2d after interpolation
+            scale_factor: the factor to upsample the feature map by
+            mode: the interpolation algorithm to use
+        """
         super().__init__()
         self.conv = nn.Conv2d(ch, ch, kernel_size=3, stride=1, padding=1)
+        self.scale_factor = scale_factor
+        self.mode = mode
 
     def forward(self, x):
         """TODO"""
         # Upsample by a factor of 2 with nearest neighbors
-        x = F.interpolate(x, scale_factor=2, mode="nearest")
+        x = F.interpolate(x, scale_factor=self.scale_factor, mode=self.mode)
         x = self.conv(x)
         return x
 
