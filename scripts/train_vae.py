@@ -170,6 +170,10 @@ def main(base_config_path: str, model_config_path: str = None):
     reproduce.model_info(vae_model)
 
     ############# START HERE - BUILD CORRECT SOLVER PARAMS ####################
+    ########### The solvers are found in the autoencoder file here: https://github.com/CompVis/latent-diffusion/blob/a506df5756472e2ebaf9078affdde2c4f1502cd4/ldm/models/autoencoder.py#L197
+    #### Contains an autoencoder optmizer and a discriminator optimizer for adversarial training; i think adversarial training is only used
+    ### for the autoencoder, not the diffusion model - chatgpt explains this super well
+    
 
     # Extract solver configs and build solvers
     solver_config = solver_configs[base_config["train"]["solver_config"]]()
